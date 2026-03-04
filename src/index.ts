@@ -335,12 +335,12 @@ export async function verifyWebhookSignature(
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
     'raw',
-    encoder.encode(secret),
+    encoder.encode(secret) as any,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign'],
   );
-  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(payload));
+  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(payload) as any);
   const expected = Array.from(new Uint8Array(sig))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
