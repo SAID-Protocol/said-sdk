@@ -1,10 +1,13 @@
 {
   "name": "@said-protocol/client",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "SAID Protocol client SDK — cross-chain agent messaging with x402 payments",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "said": "./dist/cli.js"
+  },
   "files": ["dist"],
   "scripts": {
     "build": "tsc",
@@ -17,13 +20,17 @@
     "url": "https://github.com/kaiclawd/said-sdk"
   },
   "dependencies": {
+    "@solana/web3.js": "^1.98.0",
     "@x402/fetch": "^2.5.0",
-    "@x402/svm": "^2.5.0"
+    "@x402/svm": "^2.5.0",
+    "bs58": "^6.0.0",
+    "tweetnacl": "^1.0.3"
   },
   "peerDependencies": {
     "@solana/kit": "^2.0.0"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0"
   }
