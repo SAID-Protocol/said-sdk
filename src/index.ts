@@ -1,6 +1,6 @@
 /**
- * SAID Protocol Client SDK v0.4.0
- * Agent identity, reputation, and cross-chain messaging on Solana
+ * SAID Protocol Client SDK v0.5.0
+ * Agent identity, reputation, staking, and cross-chain messaging on Solana
  *
  * @example
  * ```ts
@@ -188,6 +188,27 @@ export interface ProtocolStats {
   averageReputation: number;
 }
 
+// ── Staking Types ───────────────────────────────────────────────────────────
+
+export interface StakeInfo {
+  agent: string;
+  stakePDA: string;
+  amountLamports: number;
+  amountSOL: number;
+  status: 'active' | 'unstake_requested' | 'unstake_complete' | 'none';
+  requestedAt: number | null;
+  cooldownEndsAt: number | null;
+  slashedCount: number;
+}
+
+export interface BatchVerificationResult {
+  wallet: string;
+  verified: boolean;
+  registered: boolean;
+  trustScore: number | null;
+  tier: string | null;
+}
+
 // ── Client ─────────────────────────────────────────────────────────────────
 
 export interface SAIDClientConfig {
@@ -195,16 +216,20 @@ export interface SAIDClientConfig {
   keypairBytes?: Uint8Array;
   /** API base URL (default: https://api.saidprotocol.com) */
   apiUrl?: string;
+  /** Solana RPC URL (default: https://api.mainnet-beta.solana.com) */
+  rpcUrl?: string;
 }
 
 export class SAIDClient {
   private apiUrl: string;
+  private rpcUrl: string;
   private x402Fetch: typeof fetch | null = null;
   private keypairBytes?: Uint8Array;
   private initPromise: Promise<void> | null = null;
 
   constructor(config: SAIDClientConfig = {}) {
     this.apiUrl = config.apiUrl || 'https://api.saidprotocol.com';
+    this.rpcUrl = config.rpcUrl || 'https://api.mainnet-beta.solana.com';
     this.keypairBytes = config.keypairBytes;
 
     if (this.keypairBytes) {
@@ -231,6 +256,31 @@ export class SAIDClient {
       this.initPromise = null;
     }
     return this.x402Fetch || fetch;
+  }
+
+  // ── PDA Helpers ─────────────────────────────────────────────────────────
+
+  private static PROGRAM_ID_HEX = '5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G';
+
+  private async getAgentPDA(ownerStr: string): Promise<{ PublicKey: any; Connection: any; agentPDA: any }> {
+    const { PublicKey, Connection } = await import('@solana/web3.js');
+    const owner = new PublicKey(ownerStr);
+    const programId = new PublicKey(SAIDClient.PROGRAM_ID_HEX);
+    const [agentPDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from('agent'), owner.toBuffer()],
+      programId,
+    );
+    return { PublicKey, Connection, agentPDA };
+  }
+
+  private async getStakePDAFromAgent(agentPDA: any): Promise<any> {
+    const { PublicKey } = await import('@solana/web3.js');
+    const programId = new PublicKey(SAIDClient.PROGRAM_ID_HEX);
+    const [stakePDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from('stake'), agentPDA.toBuffer()],
+      programId,
+    );
+    return stakePDA;
   }
 
   // ── Trust & Reputation ─────────────────────────────────────────────────
@@ -335,6 +385,192 @@ export class SAIDClient {
     const res = await fetch(`${this.apiUrl}/api/agents/${wallet}/passport`);
     if (!res.ok) throw new SAIDError(`Passport check failed`, res.status);
     return res.json();
+  }
+
+  // ── Staking ─────────────────────────────────────────────────────────────
+
+  /**
+   * Get staking information for an agent.
+   * Returns stake amount, status, cooldown info, and slash history.
+   *
+   * This is SAID's key differentiator — agents with stake have skin in the game.
+   * Use this to gate high-value interactions.
+   *
+   * @example
+   * ```ts
+   * const stake = await client.getStakeInfo('WALLET_ADDRESS');
+   * if (stake.amountSOL >= 1.0 && stake.status === 'active') {
+   *   console.log('Agent has sufficient active stake');
+   * }
+   * ```
+   */
+  async getStakeInfo(wallet: string): Promise<StakeInfo> {
+    const { Connection } = await import('@solana/web3.js');
+    const { agentPDA } = await this.getAgentPDA(wallet);
+    const stakePDA = await this.getStakePDAFromAgent(agentPDA);
+
+    const connection = new Connection(this.rpcUrl, 'confirmed');
+    const accountInfo = await connection.getAccountInfo(stakePDA);
+
+    if (!accountInfo || !accountInfo.data) {
+      return {
+        agent: wallet,
+        stakePDA: stakePDA.toBase58(),
+        amountLamports: 0,
+        amountSOL: 0,
+        status: 'none',
+        requestedAt: null,
+        cooldownEndsAt: null,
+        slashedCount: 0,
+      };
+    }
+
+    // Parse stake account data
+    // Layout (36 bytes min):
+    //   discriminator: 8 bytes
+    //   agent_pubkey: 32 bytes
+    //   amount: 8 bytes (u64 lamports)
+    //   status: 1 byte (0=active, 1=unstake_requested, 2=unstake_complete)
+    //   requested_at: 8 bytes (i64 unix timestamp, 0 if not requested)
+    //   slashed_count: 8 bytes (u64)
+    const data = accountInfo.data;
+    const COOLDOWN_SECONDS = 7 * 24 * 60 * 60; // 7 days
+
+    let offset = 8; // skip discriminator
+    offset += 32; // skip agent pubkey
+    const amountLamports = Number(data.readBigUInt64LE(offset));
+    offset += 8;
+    const statusByte = data[offset];
+    offset += 1;
+    const requestedAt = Number(data.readBigInt64LE(offset));
+    offset += 8;
+    const slashedCount = Number(data.readBigUInt64LE(offset));
+
+    const status = statusByte === 0 ? 'active' :
+                   statusByte === 1 ? 'unstake_requested' :
+                   statusByte === 2 ? 'unstake_complete' : 'none';
+
+    const cooldownEndsAt = requestedAt > 0
+      ? (requestedAt + COOLDOWN_SECONDS) * 1000
+      : null;
+
+    return {
+      agent: wallet,
+      stakePDA: stakePDA.toBase58(),
+      amountLamports,
+      amountSOL: amountLamports / 1_000_000_000,
+      status,
+      requestedAt: requestedAt > 0 ? requestedAt * 1000 : null,
+      cooldownEndsAt,
+      slashedCount,
+    };
+  }
+
+  // ── Batch Operations ────────────────────────────────────────────────────
+
+  /**
+   * Verify multiple agents in a single batch.
+   * More efficient than calling getAgent() in a loop for trust checks.
+   *
+   * @example
+   * ```ts
+   * const results = await client.verifyMultiple([
+   *   'WALLET_A', 'WALLET_B', 'WALLET_C',
+   * ]);
+   * const trusted = results.filter(r => r.verified && (r.trustScore ?? 0) >= 50);
+   * ```
+   */
+  async verifyMultiple(wallets: string[]): Promise<BatchVerificationResult[]> {
+    // Fire all requests concurrently
+    const results = await Promise.allSettled(
+      wallets.map(w => this.getAgent(w))
+    );
+
+    return results.map((result, i) => {
+      const wallet = wallets[i];
+      if (result.status === 'fulfilled') {
+        return {
+          wallet,
+          verified: result.value.verified,
+          registered: result.value.registered,
+          trustScore: result.value.trustScore?.score ?? null,
+          tier: result.value.trustScore?.tier ?? null,
+        };
+      }
+      return {
+        wallet,
+        verified: false,
+        registered: false,
+        trustScore: null,
+        tier: null,
+      };
+    });
+  }
+
+  // ── Trust-Gated Helpers ─────────────────────────────────────────────────
+
+  /**
+   * Require an agent to meet a minimum trust threshold.
+   * Throws SAIDError if the agent doesn't meet criteria.
+   *
+   * This is the building block for trust-powered products — marketplaces,
+   * escrow, any interaction where you need to enforce trust.
+   *
+   * @example
+   * ```ts
+   * // Only allow verified agents with 50+ score and 0.5 SOL staked
+   * await client.requireTrust(wallet, {
+   *   minScore: 50,
+   *   requireVerified: true,
+   *   minStakeSOL: 0.5,
+   * });
+   * // Proceed with interaction...
+   * ```
+   */
+  async requireTrust(
+    wallet: string,
+    options: {
+      minScore?: number;
+      requireVerified?: boolean;
+      minStakeSOL?: number;
+    },
+  ): Promise<void> {
+    const { minScore = 0, requireVerified = false, minStakeSOL = 0 } = options;
+
+    // Fetch agent and stake info concurrently
+    const [agent, stake] = await Promise.all([
+      this.getAgent(wallet),
+      minStakeSOL > 0 ? this.getStakeInfo(wallet) : Promise.resolve(null),
+    ]);
+    if (!agent.registered) {
+      throw new SAIDError(`Agent not registered: ${wallet}`, 404);
+    }
+
+    if (requireVerified && !agent.verified) {
+      throw new SAIDError(`Agent not verified: ${wallet}`, 403);
+    }
+
+    const score = agent.trustScore?.score ?? 0;
+    if (score < minScore) {
+      throw new SAIDError(
+        `Trust score ${score} below minimum ${minScore}: ${wallet}`,
+        403,
+      );
+    }
+
+    if (stake && stake.amountSOL < minStakeSOL) {
+      throw new SAIDError(
+        `Stake ${stake.amountSOL.toFixed(4)} SOL below minimum ${minStakeSOL} SOL: ${wallet}`,
+        403,
+      );
+    }
+
+    if (stake && stake.status !== 'active' && stake.status !== 'none') {
+      throw new SAIDError(
+        `Agent stake not active (status: ${stake.status}): ${wallet}`,
+        403,
+      );
+    }
   }
 
   // ── Messaging ──────────────────────────────────────────────────────────

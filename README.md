@@ -89,6 +89,50 @@ const keypair = new Uint8Array(JSON.parse(readFileSync('./keypair.json', 'utf8')
 const paidClient = new SAIDClient({ keypairBytes: keypair });
 ```
 
+## Trust-Gated Interactions
+
+The SDK provides helpers for building trust-powered products — marketplaces, escrow, any interaction where trust matters.
+
+### Basic Trust Gate
+
+```typescript
+// Only interact with verified agents scoring 50+
+await client.requireTrust(wallet, {
+  requireVerified: true,
+  minScore: 50,
+});
+// Proceed with interaction...
+```
+
+### Stake-Gated Interactions
+
+```typescript
+// Require agents to have 1+ SOL staked (skin in the game)
+await client.requireTrust(wallet, {
+  requireVerified: true,
+  minStakeSOL: 1.0,
+});
+```
+
+### Batch Trust Check
+
+```typescript
+// Filter a list of agents by trustworthiness
+const candidates = ['WALLET_A', 'WALLET_B', 'WALLET_C'];
+const results = await client.verifyMultiple(candidates);
+const trusted = results.filter(r => r.verified && (r.trustScore ?? 0) >= 50);
+```
+
+### Query Stake Info
+
+```typescript
+const stake = await client.getStakeInfo('WALLET_ADDRESS');
+if (stake.status === 'active' && stake.amountSOL >= 1.0) {
+  console.log(`Agent has ${stake.amountSOL} SOL at risk`);
+  console.log(`Slashed ${stake.slashedCount} times historically`);
+}
+```
+
 ## CLI
 
 ```bash
@@ -113,6 +157,8 @@ said emergency-unstake --keypair ./key.json         # Instant (10% penalty)
 
 ## API Reference
 
+### Staking & Trust Enforcement
+
 ### Trust & Reputation
 
 | Method | Description |
@@ -124,6 +170,14 @@ said emergency-unstake --keypair ./key.json         # Instant (10% penalty)
 | `getLeaderboard()` | Top agents ranked by reputation |
 | `getProtocolStats()` | Total/verified agent counts, avg reputation |
 | `getPassport(wallet)` | Check soulbound passport NFT status |
+
+### Staking & Enforcement
+
+| Method | Description |
+|--------|-------------|
+| `getStakeInfo(wallet)` | On-chain stake amount, status, cooldown, slash history |
+| `verifyMultiple(wallets[])` | Batch-check verification + trust scores |
+| `requireTrust(wallet, opts)` | Trust gate — throws if agent doesn't meet thresholds |
 
 ### Messaging
 
@@ -180,3 +234,20 @@ SAID uses a multi-dimensional scoring system (0-100):
 ## License
 
 MIT
+
+## Changelog
+
+### v0.5.0
+- **New:** `getStakeInfo()` — query on-chain staking data (amount, status, cooldown, slashes)
+- **New:** `verifyMultiple()` — batch verification for checking arrays of wallets
+- **New:** `requireTrust()` — trust-gate helper that throws if agent doesn't meet thresholds
+- **New:** `StakeInfo` and `BatchVerificationResult` TypeScript types
+- **New:** Configurable `rpcUrl` in `SAIDClientConfig`
+- **Docs:** Trust-gated interactions guide in README
+
+### v0.4.0
+- Trust scoring, feedback, leaderboard, passport API
+- Staking CLI commands
+
+### v0.1.0
+- Initial release: agent registration, verification, cross-chain messaging

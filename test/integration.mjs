@@ -85,6 +85,40 @@ const passport = await client.getPassport(TEST_WALLET);
 assert('getPassport returns hasPassport boolean', typeof passport.hasPassport === 'boolean');
 assert('getPassport returns canMint boolean', typeof passport.canMint === 'boolean');
 
+// ── Staking (on-chain read) ──
+const stake = await client.getStakeInfo(TEST_WALLET);
+assert('getStakeInfo returns agent', typeof stake.agent === 'string');
+assert('getStakeInfo returns stakePDA', typeof stake.stakePDA === 'string');
+assert('getStakeInfo returns amountSOL as number', typeof stake.amountSOL === 'number');
+assert('getStakeInfo returns status as string', typeof stake.status === 'string');
+assert('getStakeInfo returns slashedCount as number', typeof stake.slashedCount === 'number');
+
+// ── Batch Verification ──
+const batchResults = await client.verifyMultiple([
+  TEST_WALLET,
+  UNREGISTERED_WALLET,
+]);
+assert('verifyMultiple returns 2 results', batchResults.length === 2);
+assert('verifyMultiple first result verified', batchResults[0].verified === true);
+assert('verifyMultiple first result registered', batchResults[0].registered === true);
+assert('verifyMultiple second result not registered', batchResults[1].registered === false);
+
+// ── Trust-Gated Helper (should pass) ──
+try {
+  await client.requireTrust(TEST_WALLET, { requireVerified: true, minScore: 0 });
+  assert('requireTrust passes for verified agent with minScore 0', true);
+} catch (e) {
+  assert('requireTrust passes for verified agent with minScore 0', false);
+}
+
+// ── Trust-Gated Helper (should fail) ──
+try {
+  await client.requireTrust(UNREGISTERED_WALLET, { requireVerified: true });
+  assert('requireTrust throws for unregistered wallet', false);
+} catch (e) {
+  assert('requireTrust throws for unregistered wallet', e.name === 'SAIDError');
+}
+
 // ── Discovery ──
 const agents = await client.discover();
 assert('discover returns array', Array.isArray(agents));
