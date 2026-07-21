@@ -209,6 +209,42 @@ export interface BatchVerificationResult {
   tier: string | null;
 }
 
+// ── Cache ──────────────────────────────────────────────────────────────────
+
+interface CacheEntry<T> {
+  value: T;
+  expiresAt: number;
+}
+
+class SimpleCache {
+  private store = new Map<string, CacheEntry<unknown>>();
+  private ttlMs: number;
+
+  constructor(ttlMs: number) {
+    this.ttlMs = ttlMs;
+  }
+
+  get<T>(key: string): T | null {
+    const entry = this.store.get(key);
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) {
+      this.store.delete(key);
+      return null;
+    }
+    return entry.value as T;
+  }
+
+  set<T>(key: string, value: T): void {
+    if (this.ttlMs <= 0) return;
+    this.store.set(key, { value, expiresAt: Date.now() + this.ttlMs });
+  }
+
+  invalidate(key?: string): void {
+    if (key) this.store.delete(key);
+    else this.store.clear();
+  }
+}
+
 // ── Client ─────────────────────────────────────────────────────────────────
 
 export interface SAIDClientConfig {
@@ -218,6 +254,8 @@ export interface SAIDClientConfig {
   apiUrl?: string;
   /** Solana RPC URL (default: https://api.mainnet-beta.solana.com) */
   rpcUrl?: string;
+  /** Cache TTL in milliseconds (default: 30000 = 30s, 0 = disabled) */
+  cacheTtlMs?: number;
 }
 
 export class SAIDClient {
@@ -226,15 +264,23 @@ export class SAIDClient {
   private x402Fetch: typeof fetch | null = null;
   private keypairBytes?: Uint8Array;
   private initPromise: Promise<void> | null = null;
+  private cache: SimpleCache;
 
   constructor(config: SAIDClientConfig = {}) {
     this.apiUrl = config.apiUrl || 'https://api.saidprotocol.com';
     this.rpcUrl = config.rpcUrl || 'https://api.mainnet-beta.solana.com';
     this.keypairBytes = config.keypairBytes;
+    this.cache = new SimpleCache(config.cacheTtlMs ?? 30_000);
 
     if (this.keypairBytes) {
       this.initPromise = this.initX402();
     }
+  }
+
+  /** Clear the response cache. Pass a wallet to invalidate a single agent. */
+  invalidateCache(wallet?: string): void {
+    if (wallet) this.cache.invalidate(`agent:${wallet}`);
+    else this.cache.invalidate();
   }
 
   private async initX402(): Promise<void> {
@@ -330,6 +376,43 @@ export class SAIDClient {
   }
 
   /**
+   * Quick helper: returns just the trust tier label (e.g. 'Gold', 'Silver').
+   * Returns null if the agent has no trust score.
+   *
+   * @example
+   * ```ts
+   * const tier = await client.getTrustTier('WALLET');
+   * if (tier === 'Gold') allowDiscount();
+   * ```
+   */
+  async getTrustTier(wallet: string): Promise<string | null> {
+    const score = await this.getTrustScore(wallet);
+    return score?.tier ?? null;
+  }
+
+  /**
+   * Filter a list of wallets, returning only those that meet trust criteria.
+   * Uses batch verification internally for efficiency.
+   *
+   * @example
+   * ```ts
+   * const trusted = await client.filterTrusted(wallets, { minScore: 50 });
+   * ```
+   */
+  async filterTrusted(
+    wallets: string[],
+    options: { minScore?: number; requireVerified?: boolean } = {},
+  ): Promise<BatchVerificationResult[]> {
+    const results = await this.verifyMultiple(wallets);
+    const { minScore = 0, requireVerified = false } = options;
+    return results.filter((r) => {
+      if (requireVerified && !r.verified) return false;
+      if ((r.trustScore ?? 0) < minScore) return false;
+      return true;
+    });
+  }
+
+  /**
    * Quick boolean check if a wallet is a verified SAID agent.
    */
   async isVerified(wallet: string): Promise<boolean> {
@@ -363,19 +446,29 @@ export class SAIDClient {
    * ```
    */
   async getLeaderboard(): Promise<LeaderboardEntry[]> {
+    const cached = this.cache.get<LeaderboardEntry[]>('leaderboard');
+    if (cached) return cached;
+
     const res = await fetch(`${this.apiUrl}/api/leaderboard`);
     if (!res.ok) throw new SAIDError(`Leaderboard fetch failed`, res.status);
     const data = await res.json();
-    return data.leaderboard || [];
+    const leaderboard = data.leaderboard || [];
+    this.cache.set('leaderboard', leaderboard);
+    return leaderboard;
   }
 
   /**
    * Get protocol-wide statistics.
    */
   async getProtocolStats(): Promise<ProtocolStats> {
+    const cached = this.cache.get<ProtocolStats>('stats');
+    if (cached) return cached;
+
     const res = await fetch(`${this.apiUrl}/api/stats`);
     if (!res.ok) throw new SAIDError(`Stats fetch failed`, res.status);
-    return res.json();
+    const data = await res.json();
+    this.cache.set('stats', data);
+    return data;
   }
 
   /**
@@ -775,4 +868,125 @@ export async function verifyWebhookSignature(
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
   return `sha256=${expected}` === signature;
+}
+
+// ── React Hooks (Optional) ───────────────────────────────────────────────────
+//
+// Framework-free hooks factory. Works with React, Preact, or any framework
+// that supports the useCallback/useEffect/useState pattern.
+// Import { createSAIDHooks } only in client-side code.
+//
+// USAGE (Next.js / React):
+//   'use client';
+//   import { SAIDClient, createSAIDHooks } from '@said-protocol/client';
+//   const hooks = createSAIDHooks(new SAIDClient());
+//   const { data: agent, loading } = hooks.useAgent('WALLET');
+
+export interface SAIDHooks {
+  useAgent: (wallet: string | null) => { data: AgentVerification | null; loading: boolean; error: Error | null };
+  useTrustScore: (wallet: string | null) => { data: TrustScoreBreakdown | null; loading: boolean; error: Error | null };
+  useLeaderboard: () => { data: LeaderboardEntry[] | null; loading: boolean; error: Error | null };
+  useProtocolStats: () => { data: ProtocolStats | null; loading: boolean; error: Error | null };
+  useIsVerified: (wallet: string | null) => { data: boolean; loading: boolean };
+}
+
+/**
+ * Create React-compatible hooks bound to a SAIDClient instance.
+ *
+ * NOTE: This function uses dynamic imports for React, so it won't
+ * bloat your bundle if you're not using React. It throws at runtime
+ * if React is not installed.
+ *
+ * @example
+ * ```tsx
+ * 'use client';
+ * import { SAIDClient, createSAIDHooks } from '@said-protocol/client';
+ *
+ * const saidHooks = createSAIDHooks(new SAIDClient());
+ *
+ * function AgentCard({ wallet }: { wallet: string }) {
+ *   const { data: agent, loading } = saidHooks.useAgent(wallet);
+ *   if (loading) return <p>Loading...</p>;
+ *   if (!agent?.verified) return <p>Unverified</p>;
+ *   return <p>{agent.identity?.name} (Score: {agent.trustScore?.score})</p>;
+ * }
+ * ```
+ */
+export function createSAIDHooks(client: SAIDClient): SAIDHooks {
+  // Lazy-load React only when hooks are actually used
+  let react: any;
+  try {
+    react = require('react');
+  } catch {
+    throw new Error(
+      'createSAIDHooks requires React. Install it: npm install react',
+    );
+  }
+
+  const { useState, useEffect, useCallback } = react as {
+    useState: <T>(initial: T) => [T, (v: T | ((prev: T) => T)) => void];
+    useEffect: (fn: () => void | (() => void), deps: unknown[]) => void;
+    useCallback: <T extends (...args: any[]) => any>(fn: T, deps: unknown[]) => T;
+  };
+
+  function useAsync<T>(
+    fn: () => Promise<T>,
+    deps: unknown[],
+  ): { data: T | null; loading: boolean; error: Error | null } {
+    const [data, setData] = useState<T | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<Error | null>(null);
+
+    const run = useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const result = await fn();
+        setData(result);
+      } catch (e: any) {
+        setError(e);
+      } finally {
+        setLoading(false);
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, deps);
+
+    useEffect(() => {
+      run();
+    }, [run]);
+
+    return { data, loading, error };
+  }
+
+  return {
+    useAgent(wallet: string | null) {
+      return useAsync(
+        () => (wallet ? client.getAgent(wallet) : Promise.resolve(null as AgentVerification | null)),
+        [wallet],
+      );
+    },
+
+    useTrustScore(wallet: string | null) {
+      return useAsync(
+        () => (wallet ? client.getTrustScore(wallet) : Promise.resolve(null as TrustScoreBreakdown | null)),
+        [wallet],
+      );
+    },
+
+    useLeaderboard() {
+      return useAsync(() => client.getLeaderboard(), []);
+    },
+
+    useProtocolStats() {
+      return useAsync(() => client.getProtocolStats(), []);
+    },
+
+    useIsVerified(wallet: string | null) {
+      const { data, loading } = useAsync(
+        () => (wallet ? client.isVerified(wallet) : Promise.resolve(false)),
+        [wallet],
+      );
+      return { data: data ?? false, loading };
+    },
+  };
 }

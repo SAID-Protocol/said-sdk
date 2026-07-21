@@ -588,6 +588,71 @@ async function statsCmd() {
   }
 }
 
+// ── Discovery Commands ──
+
+async function discoverCmd(args: Record<string, string>) {
+  const limit = parseInt(args.limit || "20");
+
+  try {
+    const url = new URL(`${API_BASE}/xchain/discover`);
+    if (args.query) url.searchParams.set("q", args.query);
+    const res = await fetch(url.toString());
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const agents = (data.agents || []).slice(0, limit);
+
+    if (agents.length === 0) {
+      console.log("No agents found.");
+      return;
+    }
+
+    console.log(`\n  ╔══ SAID Agent Directory ══╗\n`);
+    for (const a of agents) {
+      const verified = a.verified ? "✅" : "  ";
+      const chains = a.chain || "?";
+      console.log(`  ${verified}  ${a.name || "Unnamed"} (${a.address.slice(0, 8)}...)`);
+      console.log(`       Chain: ${chains} • Source: ${a.source}`);
+      if (a.description) console.log(`       ${a.description.slice(0, 80)}`);
+      console.log();
+    }
+    console.log(`  Showing ${agents.length} of ${data.agents?.length || 0} agents\n`);
+  } catch (e: any) {
+    console.error(`❌ Failed: ${e.message}`);
+    process.exit(1);
+  }
+}
+
+async function resolveCmd(args: Record<string, string>) {
+  if (!args.wallet) { console.error("Missing --wallet"); process.exit(1); }
+
+  try {
+    const url = new URL(`${API_BASE}/xchain/resolve/${args.wallet}`);
+    if (args.chain) url.searchParams.set("chain", args.chain);
+    const res = await fetch(url.toString());
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const agents = data.agents || [];
+
+    if (agents.length === 0) {
+      console.log(`No agents found for ${args.wallet}`);
+      return;
+    }
+
+    console.log(`\n  Agent: ${args.wallet}\n`);
+    for (const a of agents) {
+      const verified = a.verified ? "✅" : "❌";
+      console.log(`  ${verified}  ${a.chain} — ${a.name || "Unnamed"}`);
+      if (a.source) console.log(`       Source: ${a.source}`);
+      if (a.endpoint) console.log(`       Endpoint: ${a.endpoint}`);
+      if (a.reputationScore !== undefined) console.log(`       Reputation: ${a.reputationScore}`);
+      console.log();
+    }
+  } catch (e: any) {
+    console.error(`❌ Failed: ${e.message}`);
+    process.exit(1);
+  }
+}
+
 // ── Main ──
 
 const command = process.argv[2];
@@ -609,8 +674,11 @@ switch (command) {
   case "leaderboard": leaderboardCmd(args); break;
   case "passport": passportCmd(args); break;
   case "stats": statsCmd(); break;
+  // Discovery
+  case "discover": discoverCmd(args); break;
+  case "resolve": resolveCmd(args); break;
   default:
-    console.log(`SAID Protocol CLI v0.4.0
+    console.log(`SAID Protocol CLI v0.6.0
 
 Usage:
   ── Registration & Staking ──
@@ -630,6 +698,10 @@ Usage:
   said passport           --wallet <address>                  (check soulbound passport)
   said stats                                                 (protocol-wide statistics)
   said status             --wallet <address>                  (quick registration check)
+
+  ── Discovery ──
+  said discover           [--query <term>] [--limit <n>]      (search agents across chains)
+  said resolve            --wallet <address> [--chain <name>] (resolve agent across chains)
 
 Options:
   --rpc <url>   Custom RPC URL (default: mainnet-beta)`);

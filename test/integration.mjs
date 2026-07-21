@@ -119,6 +119,36 @@ try {
   assert('requireTrust throws for unregistered wallet', e.name === 'SAIDError');
 }
 
+// ── New v0.6.0 Methods ──
+
+// Use a fresh client with cache disabled to avoid stale data
+const freshClient = new SAIDClient({ cacheTtlMs: 0 });
+
+// getTrustTier
+const tier = await freshClient.getTrustTier(TEST_WALLET);
+assert('getTrustTier returns string or null for known agent', tier === null || typeof tier === 'string');
+const noTier = await freshClient.getTrustTier(UNREGISTERED_WALLET);
+assert('getTrustTier returns null for unknown wallet', noTier === null);
+
+// filterTrusted
+const filterResults = await freshClient.filterTrusted([TEST_WALLET, UNREGISTERED_WALLET], { requireVerified: true });
+assert('filterTrusted returns array', Array.isArray(filterResults));
+assert('filterTrusted includes verified agent', filterResults.some(r => r.wallet === TEST_WALLET));
+assert('filterTrusted excludes unregistered', !filterResults.some(r => r.wallet === UNREGISTERED_WALLET));
+
+const strictFilter = await freshClient.filterTrusted([TEST_WALLET, UNREGISTERED_WALLET], { minScore: 999 });
+assert('filterTrusted with high minScore returns empty', strictFilter.length === 0);
+
+// Cache invalidation
+client.invalidateCache();
+assert('invalidateCache does not throw', true);
+
+// Cache works — cached client returns same agent data
+const cachedAgent = await client.getAgent(TEST_WALLET); // first call (may hit API)
+const cachedAgent2 = await client.getAgent(TEST_WALLET); // second call (from cache)
+assert('cached getAgent returns registered', cachedAgent2.registered === cachedAgent.registered);
+assert('cached getAgent returns verified', cachedAgent2.verified === cachedAgent.verified);
+
 // ── Discovery ──
 const agents = await client.discover();
 assert('discover returns array', Array.isArray(agents));

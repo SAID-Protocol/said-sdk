@@ -133,6 +133,57 @@ if (stake.status === 'active' && stake.amountSOL >= 1.0) {
 }
 ```
 
+## React Hooks
+
+The SDK ships with optional React hooks. No bundle bloat if you're not using React — hooks are lazy-loaded.
+
+```tsx
+'use client';
+import { SAIDClient, createSAIDHooks } from '@said-protocol/client';
+
+const saidHooks = createSAIDHooks(new SAIDClient());
+
+// Agent card component
+function AgentCard({ wallet }: { wallet: string }) {
+  const { data: agent, loading, error } = saidHooks.useAgent(wallet);
+
+  if (loading) return <div>Loading...</div>;
+  if (!agent?.verified) return <div>⚠️ Unverified</div>;
+
+  return (
+    <div>
+      <h3>{agent.identity?.name}</h3>
+      <p>Score: {agent.trustScore?.score}/100 ({agent.trustScore?.tier})</p>
+      <p>Feedback: {agent.reputation?.feedbackCount} reviews</p>
+    </div>
+  );
+}
+
+// Leaderboard component
+function Leaderboard() {
+  const { data: entries, loading } = saidHooks.useLeaderboard();
+  if (loading) return <p>Loading...</p>;
+
+  return (
+    <ul>
+      {entries?.slice(0, 10).map(a => (
+        <li key={a.wallet}>#{a.rank} {a.name}: {a.reputationScore.toFixed(1)}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+### Available Hooks
+
+| Hook | Returns | Description |
+|------|---------|-------------|
+| `useAgent(wallet)` | `{ data, loading, error }` | Full agent profile |
+| `useTrustScore(wallet)` | `{ data, loading, error }` | Trust score breakdown |
+| `useLeaderboard()` | `{ data, loading, error }` | Top agents by reputation |
+| `useProtocolStats()` | `{ data, loading, error }` | Protocol-wide statistics |
+| `useIsVerified(wallet)` | `{ data, loading }` | Boolean verification check |
+
 ## CLI
 
 ```bash
@@ -178,6 +229,9 @@ said emergency-unstake --keypair ./key.json         # Instant (10% penalty)
 | `getStakeInfo(wallet)` | On-chain stake amount, status, cooldown, slash history |
 | `verifyMultiple(wallets[])` | Batch-check verification + trust scores |
 | `requireTrust(wallet, opts)` | Trust gate — throws if agent doesn't meet thresholds |
+| `filterTrusted(wallets[], opts)` | Filter wallet list by trust criteria (batch) |
+| `getTrustTier(wallet)` | Quick tier label lookup (returns string or null) |
+| `invalidateCache(wallet?)` | Clear response cache |
 
 ### Messaging
 
@@ -236,6 +290,16 @@ SAID uses a multi-dimensional scoring system (0-100):
 MIT
 
 ## Changelog
+
+### v0.6.0
+- **New:** `getTrustTier()` — quick tier label lookup
+- **New:** `filterTrusted()` — one-liner to filter wallet lists by trust criteria
+- **New:** `createSAIDHooks()` — React hooks factory (`useAgent`, `useTrustScore`, `useLeaderboard`, `useProtocolStats`, `useIsVerified`)
+- **New:** In-memory response cache with configurable TTL (`cacheTtlMs`)
+- **New:** `invalidateCache()` method for manual cache control
+- **New:** CLI `discover` and `resolve` commands for agent directory search
+- **Improved:** Package keywords include ERC-8004, KYA, trust-score for npm discoverability
+- **Fixed:** Repository URL points to SAID-Protocol org
 
 ### v0.5.0
 - **New:** `getStakeInfo()` — query on-chain staking data (amount, status, cooldown, slashes)
