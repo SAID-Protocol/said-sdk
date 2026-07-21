@@ -438,6 +438,156 @@ async function cancelUnstakeCmd(args: Record<string, string>) {
   }
 }
 
+// ── Trust & Reputation Commands ──
+
+async function trustCmd(args: Record<string, string>) {
+  if (!args.wallet) { console.error("Missing --wallet"); process.exit(1); }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/verify/${args.wallet}`);
+    const data = await res.json();
+
+    if (!data.registered) {
+      console.log(`❌ Agent not registered: ${args.wallet}`);
+      process.exit(1);
+    }
+
+    console.log(`\n  Agent: ${data.identity?.name || "Unnamed"} (${args.wallet})`);
+    console.log(`  Verified: ${data.verified ? "✅" : "❌"}`);
+    if (data.identity?.description) console.log(`  Description: ${data.identity.description}`);
+    if (data.identity?.twitter) console.log(`  Twitter: @${data.identity.twitter}`);
+    if (data.identity?.website) console.log(`  Website: ${data.identity.website}`);
+
+    if (data.reputation) {
+      console.log(`\n  ── Reputation ──`);
+      console.log(`  Score: ${data.reputation.score.toFixed(1)}/100`);
+      console.log(`  Tier: ${data.reputation.tier}`);
+      console.log(`  Feedback Count: ${data.reputation.feedbackCount}`);
+      console.log(`  Composite: ${data.reputation.compositeScore}`);
+    }
+
+    if (data.trustScore) {
+      const ts = data.trustScore;
+      console.log(`\n  ── Trust Score Breakdown ──`);
+      console.log(`  Overall: ${ts.score}/100 (${ts.tier})`);
+      console.log(`  Badges: ${ts.badges.length ? ts.badges.join(", ") : "none"}`);
+      console.log(`\n  Dimensions:`);
+      console.log(`    Identity:   ${ts.identity}`);
+      console.log(`    Activity:   ${ts.activity}`);
+      console.log(`    Economic:   ${ts.economic}`);
+      console.log(`    Ecosystem:  ${ts.ecosystem}`);
+      console.log(`    Longevity:  ${ts.longevity}`);
+      console.log(`    FairScale:  ${ts.fairscale}`);
+      console.log(`\n  Computed: ${ts.computedAt}`);
+    } else {
+      console.log(`\n  Trust score not yet computed.`);
+    }
+    console.log();
+  } catch (e: any) {
+    console.error(`❌ Failed: ${e.message}`);
+    process.exit(1);
+  }
+}
+
+async function feedbackCmd(args: Record<string, string>) {
+  if (!args.wallet) { console.error("Missing --wallet"); process.exit(1); }
+  const limit = parseInt(args.limit || "10");
+
+  try {
+    const res = await fetch(`${API_BASE}/api/agents/${args.wallet}/feedback`);
+    const data = await res.json();
+    const feedback = (data.feedback || []).slice(0, limit);
+
+    if (feedback.length === 0) {
+      console.log("No feedback found for this agent.");
+      return;
+    }
+
+    console.log(`\n  Feedback for ${args.wallet.slice(0, 8)}... (${data.feedback?.length || 0} total, showing ${feedback.length})\n`);
+
+    for (const f of feedback) {
+      const stars = "★".repeat(Math.round(f.score / 20)) + "☆".repeat(5 - Math.round(f.score / 20));
+      const date = new Date(f.createdAt).toLocaleDateString();
+      const verified = f.fromIsVerified ? "✅" : "⚪";
+      console.log(`  ${stars} ${f.score}/100 ${verified} ${date}`);
+      console.log(`    ${f.comment}`);
+      console.log(`    From: ${f.fromWallet.slice(0, 8)}...`);
+      console.log();
+    }
+  } catch (e: any) {
+    console.error(`❌ Failed: ${e.message}`);
+    process.exit(1);
+  }
+}
+
+async function leaderboardCmd(args: Record<string, string>) {
+  const limit = parseInt(args.limit || "10");
+
+  try {
+    const res = await fetch(`${API_BASE}/api/leaderboard`);
+    const data = await res.json();
+    const entries = (data.leaderboard || []).slice(0, limit);
+
+    if (entries.length === 0) {
+      console.log("Leaderboard is empty.");
+      return;
+    }
+
+    console.log(`\n  ╔══ SAID Protocol Leaderboard ══╗\n`);
+
+    for (const e of entries) {
+      const medal = e.rank === 1 ? "🥇" : e.rank === 2 ? "🥈" : e.rank === 3 ? "🥉" : `#${e.rank}`;
+      const verified = e.isVerified ? "✅" : "  ";
+      const score = e.reputationScore.toFixed(1).padStart(5);
+      console.log(`  ${medal}  ${score}  ${verified}  ${e.name}`);
+      console.log(`       ${e.wallet.slice(0, 8)}... • ${e.feedbackCount} feedback`);
+    }
+    console.log();
+  } catch (e: any) {
+    console.error(`❌ Failed: ${e.message}`);
+    process.exit(1);
+  }
+}
+
+async function passportCmd(args: Record<string, string>) {
+  if (!args.wallet) { console.error("Missing --wallet"); process.exit(1); }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/agents/${args.wallet}/passport`);
+    const data = await res.json();
+
+    console.log(`\n  Agent: ${args.wallet}`);
+    if (data.hasPassport) {
+      console.log(`  Passport: ✅ Minted`);
+      if (data.mintAddress) console.log(`  Mint: ${data.mintAddress}`);
+    } else {
+      console.log(`  Passport: ❌ Not minted`);
+      if (data.canMint) console.log(`  Status: Eligible to mint`);
+      if (data.reason) console.log(`  Info: ${data.reason}`);
+    }
+    console.log();
+  } catch (e: any) {
+    console.error(`❌ Failed: ${e.message}`);
+    process.exit(1);
+  }
+}
+
+async function statsCmd() {
+  try {
+    const res = await fetch(`${API_BASE}/api/stats`);
+    const data = await res.json();
+
+    console.log(`\n  ╔══ SAID Protocol Stats ══╗\n`);
+    console.log(`  Total Agents:     ${data.totalAgents?.toLocaleString()}`);
+    console.log(`  Verified Agents:  ${data.verifiedAgents?.toLocaleString()}`);
+    console.log(`  Avg Reputation:   ${data.averageReputation?.toFixed(4)}`);
+    console.log();
+  } catch (e: any) {
+    console.error(`❌ Failed: ${e.message}`);
+    process.exit(1);
+  }
+}
+
 // ── Main ──
 
 const command = process.argv[2];
@@ -453,10 +603,17 @@ switch (command) {
   case "complete-unstake": completeUnstakeCmd(args); break;
   case "cancel-unstake": cancelUnstakeCmd(args); break;
   case "emergency-unstake": emergencyUnstakeCmd(args); break;
+  // Trust & reputation
+  case "trust": trustCmd(args); break;
+  case "feedback": feedbackCmd(args); break;
+  case "leaderboard": leaderboardCmd(args); break;
+  case "passport": passportCmd(args); break;
+  case "stats": statsCmd(); break;
   default:
-    console.log(`SAID Protocol CLI v0.3.0
+    console.log(`SAID Protocol CLI v0.4.0
 
 Usage:
+  ── Registration & Staking ──
   said register           --keypair <path> --name <name> [--description <desc>] [--twitter <handle>] [--website <url>]
   said verify             --keypair <path>
   said stake              --keypair <path> --amount <SOL>    (min 0.1 SOL, requires verified agent)
@@ -465,7 +622,14 @@ Usage:
   said cancel-unstake     --keypair <path>                    (cancel pending unstake)
   said complete-unstake   --keypair <path>                    (after 7-day cooldown)
   said emergency-unstake  --keypair <path>                    (immediate, 10% penalty)
-  said status             --wallet <address>
+
+  ── Trust & Reputation ──
+  said trust              --wallet <address>                  (full trust score breakdown)
+  said feedback           --wallet <address> [--limit <n>]    (agent feedback/reviews)
+  said leaderboard        [--limit <n>]                       (top agents by reputation)
+  said passport           --wallet <address>                  (check soulbound passport)
+  said stats                                                 (protocol-wide statistics)
+  said status             --wallet <address>                  (quick registration check)
 
 Options:
   --rpc <url>   Custom RPC URL (default: mainnet-beta)`);

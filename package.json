@@ -1,7 +1,7 @@
 {
   "name": "@said-protocol/client",
-  "version": "0.3.0",
-  "description": "SAID Protocol client SDK — cross-chain agent messaging with x402 payments",
+  "version": "0.4.0",
+  "description": "SAID Protocol SDK — agent identity, reputation, and cross-chain messaging on Solana",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -11,6 +11,7 @@
   "files": ["dist"],
   "scripts": {
     "build": "tsc",
+    "test": "node test/integration.mjs",
     "prepublishOnly": "npm run build"
   },
   "keywords": ["said", "x402", "agent", "cross-chain", "solana", "a2a"],

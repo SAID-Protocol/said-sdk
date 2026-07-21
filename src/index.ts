@@ -1,23 +1,23 @@
 /**
- * SAID Protocol Client SDK
- * Cross-chain agent messaging with x402 micropayments
+ * SAID Protocol Client SDK v0.4.0
+ * Agent identity, reputation, and cross-chain messaging on Solana
  *
  * @example
  * ```ts
  * import { SAIDClient } from '@said-protocol/client';
  *
- * const client = new SAIDClient({
- *   keypairBytes: myKeypairBytes, // Uint8Array of 64-byte Solana keypair
- * });
+ * const client = new SAIDClient();
  *
- * // Send a free message (10/day)
+ * // Check an agent's trust score
+ * const score = await client.getTrustScore('AGENT_WALLET');
+ * console.log(score.score, score.tier);
+ *
+ * // Send a cross-chain message
  * await client.sendMessage({
- *   from: { address: 'SENDER_ADDRESS', chain: 'solana' },
- *   to: { address: 'RECIPIENT_ADDRESS', chain: 'base' },
- *   message: 'Hello from Solana!',
+ *   from: { address: 'SENDER', chain: 'solana' },
+ *   to: { address: 'RECIPIENT', chain: 'base' },
+ *   message: 'Hello!',
  * });
- *
- * // After free tier exhausted, payments happen automatically
  * ```
  */
 
@@ -74,6 +74,9 @@ export interface AgentInfo {
   verified: boolean;
   endpoint?: string;
   reputationScore?: number;
+  registeredAt?: string;
+  description?: string;
+  capabilities?: string[];
 }
 
 export interface FreeTierInfo {
@@ -98,14 +101,101 @@ export interface WebhookParams {
   secret?: string;
 }
 
+// ── Trust & Reputation Types ───────────────────────────────────────────────
+
+export interface TrustScoreBreakdown {
+  score: number;
+  tier: string;
+  badges: string[];
+  sources: string[];
+  identity: number;
+  activity: number;
+  economic: number;
+  ecosystem: number;
+  longevity: number;
+  fairscale: number;
+  computedAt: string;
+}
+
+export interface ReputationInfo {
+  tier: string;
+  compositeScore: number;
+  score: number;
+  feedbackCount: number;
+  trustTier: string;
+  scored: boolean;
+}
+
+export interface AgentIdentity {
+  name: string;
+  description: string | null;
+  twitter: string | null;
+  website: string | null;
+  image: string | null;
+}
+
+export interface AgentVerification {
+  registered: boolean;
+  verified: boolean;
+  wallet: string;
+  pda?: string;
+  identity?: AgentIdentity;
+  reputation?: ReputationInfo;
+  trustScore?: TrustScoreBreakdown;
+  endpoints?: {
+    mcp: string | null;
+    a2a: string | null;
+    [key: string]: string | null;
+  };
+  error?: string;
+}
+
+export interface FeedbackEntry {
+  id: string;
+  fromWallet: string;
+  toWallet: string;
+  score: number;
+  comment: string;
+  weight: number;
+  signature: string;
+  fromIsVerified: boolean;
+  txHash: string | null;
+  sourceKey: string | null;
+  createdAt: string;
+}
+
+export interface LeaderboardEntry {
+  wallet: string;
+  pda: string;
+  name: string;
+  twitter: string | null;
+  reputationScore: number;
+  feedbackCount: number;
+  isVerified: boolean;
+  rank: number;
+}
+
+export interface PassportInfo {
+  hasPassport: boolean;
+  canMint: boolean;
+  reason?: string;
+  mintAddress?: string;
+}
+
+export interface ProtocolStats {
+  totalAgents: number;
+  verifiedAgents: number;
+  averageReputation: number;
+}
+
+// ── Client ─────────────────────────────────────────────────────────────────
+
 export interface SAIDClientConfig {
   /** 64-byte Solana keypair for signing x402 payments */
   keypairBytes?: Uint8Array;
   /** API base URL (default: https://api.saidprotocol.com) */
   apiUrl?: string;
 }
-
-// ── Client ─────────────────────────────────────────────────────────────────
 
 export class SAIDClient {
   private apiUrl: string;
@@ -141,6 +231,110 @@ export class SAIDClient {
       this.initPromise = null;
     }
     return this.x402Fetch || fetch;
+  }
+
+  // ── Trust & Reputation ─────────────────────────────────────────────────
+  // These are the methods developers actually need. Score queries, feedback,
+  // leaderboards — the building blocks of trust-aware applications.
+
+  /**
+   * Get full verification and trust data for an agent.
+   * This is the primary method for checking if an agent is trustworthy.
+   *
+   * @example
+   * ```ts
+   * const agent = await client.getAgent('WALLET_ADDRESS');
+   * if (agent.verified && agent.trustScore && agent.trustScore.score > 50) {
+   *   console.log(`${agent.identity?.name} is trustworthy (score: ${agent.trustScore.score})`);
+   * }
+   * ```
+   */
+  async getAgent(wallet: string): Promise<AgentVerification> {
+    const res = await fetch(`${this.apiUrl}/api/verify/${wallet}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      return {
+        registered: false,
+        verified: false,
+        wallet,
+        error: err.error || `HTTP ${res.status}`,
+      };
+    }
+    return res.json();
+  }
+
+  /**
+   * Get a trust score breakdown for an agent.
+   * Returns multi-dimensional scoring (identity, activity, economic, etc.)
+   *
+   * @example
+   * ```ts
+   * const score = await client.getTrustScore('WALLET_ADDRESS');
+   * console.log(`Score: ${score.score}/100 (${score.tier})`);
+   * console.log(`Identity: ${score.identity}, Activity: ${score.activity}`);
+   * ```
+   */
+  async getTrustScore(wallet: string): Promise<TrustScoreBreakdown | null> {
+    const agent = await this.getAgent(wallet);
+    return agent.trustScore || null;
+  }
+
+  /**
+   * Quick boolean check if a wallet is a verified SAID agent.
+   */
+  async isVerified(wallet: string): Promise<boolean> {
+    const agent = await this.getAgent(wallet);
+    return agent.verified;
+  }
+
+  /**
+   * Get feedback/reviews for an agent.
+   *
+   * @example
+   * ```ts
+   * const feedback = await client.getFeedback('WALLET_ADDRESS');
+   * feedback.forEach(f => console.log(`${f.score}/100: ${f.comment}`));
+   * ```
+   */
+  async getFeedback(wallet: string): Promise<FeedbackEntry[]> {
+    const res = await fetch(`${this.apiUrl}/api/agents/${wallet}/feedback`);
+    if (!res.ok) throw new SAIDError(`Feedback fetch failed`, res.status);
+    const data = await res.json();
+    return data.feedback || [];
+  }
+
+  /**
+   * Get the agent leaderboard ranked by reputation score.
+   *
+   * @example
+   * ```ts
+   * const top = await client.getLeaderboard();
+   * top.slice(0, 5).forEach(a => console.log(`#${a.rank} ${a.name}: ${a.reputationScore.toFixed(1)}`));
+   * ```
+   */
+  async getLeaderboard(): Promise<LeaderboardEntry[]> {
+    const res = await fetch(`${this.apiUrl}/api/leaderboard`);
+    if (!res.ok) throw new SAIDError(`Leaderboard fetch failed`, res.status);
+    const data = await res.json();
+    return data.leaderboard || [];
+  }
+
+  /**
+   * Get protocol-wide statistics.
+   */
+  async getProtocolStats(): Promise<ProtocolStats> {
+    const res = await fetch(`${this.apiUrl}/api/stats`);
+    if (!res.ok) throw new SAIDError(`Stats fetch failed`, res.status);
+    return res.json();
+  }
+
+  /**
+   * Check if an agent has minted their soulbound passport NFT.
+   */
+  async getPassport(wallet: string): Promise<PassportInfo> {
+    const res = await fetch(`${this.apiUrl}/api/agents/${wallet}/passport`);
+    if (!res.ok) throw new SAIDError(`Passport check failed`, res.status);
+    return res.json();
   }
 
   // ── Messaging ──────────────────────────────────────────────────────────
