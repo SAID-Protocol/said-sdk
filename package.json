@@ -1,6 +1,6 @@
 {
   "name": "@said-protocol/client",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "SAID Protocol SDK — agent identity, reputation, and cross-chain messaging on Solana",
   "type": "module",
   "main": "dist/index.js",
@@ -12,7 +12,8 @@
   "scripts": {
     "build": "tsc",
     "test": "node test/integration.mjs",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": ["said", "x402", "agent", "cross-chain", "solana", "a2a", "erc-8004", "trust-score", "agent-identity", "kya", "reputation", "staking", "slashing", "mcp"],
   "license": "MIT",

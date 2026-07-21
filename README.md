@@ -89,6 +89,21 @@ const keypair = new Uint8Array(JSON.parse(readFileSync('./keypair.json', 'utf8')
 const paidClient = new SAIDClient({ keypairBytes: keypair });
 ```
 
+## ERC-8004 Agent Cards
+
+Fetch standardized agent identity cards for cross-protocol interoperability:
+
+```typescript
+const card = await client.getAgentCard('WALLET_ADDRESS');
+
+if (card) {
+  console.log(card.name);
+  console.log(card.description);
+  console.log(card.capabilities);
+  console.log(card.endpoints?.mcp); // MCP endpoint if available
+}
+```
+
 ## Trust-Gated Interactions
 
 The SDK provides helpers for building trust-powered products — marketplaces, escrow, any interaction where trust matters.
@@ -215,6 +230,7 @@ said emergency-unstake --keypair ./key.json         # Instant (10% penalty)
 | Method | Description |
 |--------|-------------|
 | `getAgent(wallet)` | Full agent profile (identity, reputation, trust score, endpoints) |
+| `getAgentCard(wallet)` | ERC-8004 compliant agent card JSON for cross-protocol interop |
 | `getTrustScore(wallet)` | Multi-dimensional trust score breakdown |
 | `isVerified(wallet)` | Quick boolean verification check |
 | `getFeedback(wallet)` | Agent feedback/review history |
@@ -290,6 +306,14 @@ SAID uses a multi-dimensional scoring system (0-100):
 MIT
 
 ## Changelog
+
+### v0.7.0
+- **New:** `getAgentCard(wallet)` — fetch ERC-8004 compliant agent card JSON for cross-protocol interop
+- **New:** `AgentCard` type with full ERC-8004 schema support (capabilities, endpoints, identity)
+- **New:** Automatic retry with exponential backoff on 5xx server errors and network failures
+- **Improved:** Caching now applies to `getAgent()`, `getFeedback()`, and `getAgentCard()` (previously only leaderboard/stats were cached)
+- **Improved:** All read methods use `fetchWithRetry` for production resilience
+- **Fixed:** Version mismatch in source header comment (was v0.5.0)
 
 ### v0.6.0
 - **New:** `getTrustTier()` — quick tier label lookup

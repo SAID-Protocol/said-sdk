@@ -678,7 +678,7 @@ switch (command) {
   case "discover": discoverCmd(args); break;
   case "resolve": resolveCmd(args); break;
   default:
-    console.log(`SAID Protocol CLI v0.6.0
+    console.log(`SAID Protocol CLI v0.7.0
 
 Usage:
   ── Registration & Staking ──

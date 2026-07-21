@@ -1,5 +1,5 @@
 /**
- * SAID Protocol Client SDK v0.5.0
+ * SAID Protocol Client SDK v0.7.0
  * Agent identity, reputation, staking, and cross-chain messaging on Solana
  *
  * @example
@@ -99,6 +99,36 @@ export interface WebhookParams {
   address: string;
   url: string;
   secret?: string;
+}
+
+// ── ERC-8004 Agent Card Types ───────────────────────────────────────────────
+
+export interface AgentCardCapability {
+  name: string;
+  description?: string;
+  endpoint?: string;
+}
+
+export interface AgentCard {
+  '@context': string;
+  '@type': string;
+  '@id': string;
+  name: string;
+  description?: string;
+  image?: string;
+  twitter?: string;
+  website?: string;
+  capabilities?: string[] | AgentCardCapability[];
+  endpoints?: {
+    mcp?: string;
+    a2a?: string;
+    [key: string]: string | undefined;
+  };
+  verified?: boolean;
+  reputationScore?: number;
+  trustTier?: string;
+  chain?: string;
+  registeredAt?: string;
 }
 
 // ── Trust & Reputation Types ───────────────────────────────────────────────
@@ -304,6 +334,38 @@ export class SAIDClient {
     return this.x402Fetch || fetch;
   }
 
+  /**
+   * Fetch with automatic retry on transient failures (5xx, network errors).
+   * Exponential backoff: 500ms, 1000ms, 2000ms.
+   */
+  private async fetchWithRetry(
+    url: string,
+    options?: RequestInit,
+    maxRetries = 2,
+  ): Promise<Response> {
+    const f = await this.getFetch();
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const res = await f(url, options);
+        // Don't retry on 4xx (client errors) — only 5xx
+        if (res.status < 500 || attempt === maxRetries) {
+          return res;
+        }
+        lastError = new SAIDError(`Server error: HTTP ${res.status}`, res.status);
+      } catch (e: any) {
+        lastError = e;
+        if (attempt === maxRetries) break;
+      }
+      // Exponential backoff
+      const delayMs = 500 * Math.pow(2, attempt);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+
+    throw lastError || new SAIDError('Request failed after retries', 500);
+  }
+
   // ── PDA Helpers ─────────────────────────────────────────────────────────
 
   private static PROGRAM_ID_HEX = '5dpw6KEQPn248pnkkaYyWfHwu2nfb3LUMbTucb6LaA8G';
@@ -336,6 +398,7 @@ export class SAIDClient {
   /**
    * Get full verification and trust data for an agent.
    * This is the primary method for checking if an agent is trustworthy.
+   * Results are cached (respecting cacheTtlMs config).
    *
    * @example
    * ```ts
@@ -346,7 +409,11 @@ export class SAIDClient {
    * ```
    */
   async getAgent(wallet: string): Promise<AgentVerification> {
-    const res = await fetch(`${this.apiUrl}/api/verify/${wallet}`);
+    const cacheKey = `agent:${wallet}`;
+    const cached = this.cache.get<AgentVerification>(cacheKey);
+    if (cached) return cached;
+
+    const res = await this.fetchWithRetry(`${this.apiUrl}/api/verify/${wallet}`);
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       return {
@@ -356,7 +423,9 @@ export class SAIDClient {
         error: err.error || `HTTP ${res.status}`,
       };
     }
-    return res.json();
+    const data = await res.json();
+    this.cache.set(cacheKey, data);
+    return data;
   }
 
   /**
@@ -430,10 +499,16 @@ export class SAIDClient {
    * ```
    */
   async getFeedback(wallet: string): Promise<FeedbackEntry[]> {
-    const res = await fetch(`${this.apiUrl}/api/agents/${wallet}/feedback`);
+    const cacheKey = `feedback:${wallet}`;
+    const cached = this.cache.get<FeedbackEntry[]>(cacheKey);
+    if (cached) return cached;
+
+    const res = await this.fetchWithRetry(`${this.apiUrl}/api/agents/${wallet}/feedback`);
     if (!res.ok) throw new SAIDError(`Feedback fetch failed`, res.status);
     const data = await res.json();
-    return data.feedback || [];
+    const feedback = data.feedback || [];
+    this.cache.set(cacheKey, feedback);
+    return feedback;
   }
 
   /**
@@ -449,7 +524,7 @@ export class SAIDClient {
     const cached = this.cache.get<LeaderboardEntry[]>('leaderboard');
     if (cached) return cached;
 
-    const res = await fetch(`${this.apiUrl}/api/leaderboard`);
+    const res = await this.fetchWithRetry(`${this.apiUrl}/api/leaderboard`);
     if (!res.ok) throw new SAIDError(`Leaderboard fetch failed`, res.status);
     const data = await res.json();
     const leaderboard = data.leaderboard || [];
@@ -464,7 +539,7 @@ export class SAIDClient {
     const cached = this.cache.get<ProtocolStats>('stats');
     if (cached) return cached;
 
-    const res = await fetch(`${this.apiUrl}/api/stats`);
+    const res = await this.fetchWithRetry(`${this.apiUrl}/api/stats`);
     if (!res.ok) throw new SAIDError(`Stats fetch failed`, res.status);
     const data = await res.json();
     this.cache.set('stats', data);
@@ -475,9 +550,33 @@ export class SAIDClient {
    * Check if an agent has minted their soulbound passport NFT.
    */
   async getPassport(wallet: string): Promise<PassportInfo> {
-    const res = await fetch(`${this.apiUrl}/api/agents/${wallet}/passport`);
+    const res = await this.fetchWithRetry(`${this.apiUrl}/api/agents/${wallet}/passport`);
     if (!res.ok) throw new SAIDError(`Passport check failed`, res.status);
     return res.json();
+  }
+
+  /**
+   * Fetch the ERC-8004 compliant agent card (JSON-LD) for an agent.
+   * This is the standardized agent identity format that other protocols
+   * and registries can consume.
+   *
+   * @example
+   * ```ts
+   * const card = await client.getAgentCard('WALLET_ADDRESS');
+   * console.log(card.name, card.description);
+   * console.log(card.capabilities);
+   * ```
+   */
+  async getAgentCard(wallet: string): Promise<AgentCard | null> {
+    const cacheKey = `card:${wallet}`;
+    const cached = this.cache.get<AgentCard>(cacheKey);
+    if (cached) return cached;
+
+    const res = await this.fetchWithRetry(`${this.apiUrl}/api/cards/${wallet}.json`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    this.cache.set(cacheKey, data);
+    return data;
   }
 
   // ── Staking ─────────────────────────────────────────────────────────────
@@ -729,7 +828,7 @@ export class SAIDClient {
   async resolveAgent(address: string, chain?: string): Promise<AgentInfo[]> {
     const url = new URL(`${this.apiUrl}/xchain/resolve/${address}`);
     if (chain) url.searchParams.set('chain', chain);
-    const res = await fetch(url.toString());
+    const res = await this.fetchWithRetry(url.toString());
     if (!res.ok) throw new SAIDError(`Resolve failed`, res.status);
     const data = await res.json();
     return data.agents || [];
@@ -741,7 +840,7 @@ export class SAIDClient {
   async discover(query?: string): Promise<AgentInfo[]> {
     const url = new URL(`${this.apiUrl}/xchain/discover`);
     if (query) url.searchParams.set('q', query);
-    const res = await fetch(url.toString());
+    const res = await this.fetchWithRetry(url.toString());
     if (!res.ok) throw new SAIDError(`Discover failed`, res.status);
     const data = await res.json();
     return data.agents || [];
@@ -751,7 +850,7 @@ export class SAIDClient {
    * Get supported chains.
    */
   async getChains(): Promise<Record<string, ChainInfo>> {
-    const res = await fetch(`${this.apiUrl}/xchain/chains`);
+    const res = await this.fetchWithRetry(`${this.apiUrl}/xchain/chains`);
     if (!res.ok) throw new SAIDError(`Chains fetch failed`, res.status);
     return res.json();
   }
@@ -760,7 +859,7 @@ export class SAIDClient {
    * Get cross-chain stats.
    */
   async getStats(): Promise<Record<string, unknown>> {
-    const res = await fetch(`${this.apiUrl}/xchain/stats`);
+    const res = await this.fetchWithRetry(`${this.apiUrl}/xchain/stats`);
     if (!res.ok) throw new SAIDError(`Stats fetch failed`, res.status);
     return res.json();
   }
@@ -771,7 +870,7 @@ export class SAIDClient {
    * Check free tier usage for an agent.
    */
   async getFreeTier(address: string): Promise<FreeTierInfo> {
-    const res = await fetch(`${this.apiUrl}/xchain/free-tier/${address}`);
+    const res = await this.fetchWithRetry(`${this.apiUrl}/xchain/free-tier/${address}`);
     if (!res.ok) throw new SAIDError(`Free tier check failed`, res.status);
     return res.json();
   }

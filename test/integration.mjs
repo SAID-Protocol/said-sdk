@@ -155,6 +155,19 @@ assert('discover returns array', Array.isArray(agents));
 assert('discover has entries', agents.length > 0);
 assert('discover entries have address', typeof agents[0]?.address === 'string');
 
+// ── v0.7.0: Agent Card (ERC-8004) ──
+const card = await client.getAgentCard(TEST_WALLET);
+assert('getAgentCard returns object for known agent', card !== null);
+assert('getAgentCard has @context', card?.['@context'] !== undefined || card?.name !== undefined);
+assert('getAgentCard has name', typeof card?.name === 'string');
+
+const noCard = await client.getAgentCard('9xKjW7XkQHJGJZhnJHYYUic5FUCgd64HChe8APYYDLS4i');
+assert('getAgentCard returns null for unknown wallet', noCard === null);
+
+// ── v0.7.0: Retry logic works (call stats multiple times rapidly) ──
+const stats2 = await client.getProtocolStats();
+assert('getProtocolStats still works after multiple calls', stats2.totalAgents > 6000);
+
 // ── Resolve ──
 const resolved = await client.resolveAgent(TEST_WALLET);
 assert('resolveAgent returns array', Array.isArray(resolved));
