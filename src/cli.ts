@@ -622,6 +622,64 @@ async function discoverCmd(args: Record<string, string>) {
   }
 }
 
+async function cardCmd(args: Record<string, string>) {
+  if (!args.wallet) { console.error("Missing --wallet"); process.exit(1); }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/cards/${args.wallet}.json`);
+    if (!res.ok) {
+      if (res.status === 404) console.log(`❌ No agent card found for ${args.wallet}`);
+      else console.error(`❌ Failed: HTTP ${res.status}`);
+      process.exit(1);
+    }
+
+    const card = await res.json();
+
+    console.log(`\n  ╔══ ERC-8004 Agent Card ══╗\n`);
+    console.log(`  Name:           ${card.name || "Unnamed"}`);
+    console.log(`  @id:            ${card["@id"] || card.address || args.wallet}`);
+    console.log(`  @type:          ${card["@type"] || "Agent"}`);
+    console.log(`  @context:       ${card["@context"] || "N/A"}`);
+    if (card.description) console.log(`  Description:    ${card.description}`);
+    if (card.twitter) console.log(`  Twitter:        @${card.twitter}`);
+    if (card.website) console.log(`  Website:        ${card.website}`);
+    if (card.image) console.log(`  Image:          ${card.image}`);
+    if (card.verified !== undefined) console.log(`  Verified:       ${card.verified ? "✅" : "❌"}`);
+    if (card.reputationScore !== undefined) console.log(`  Reputation:     ${card.reputationScore}`);
+    if (card.trustTier) console.log(`  Trust Tier:     ${card.trustTier}`);
+    if (card.chain) console.log(`  Chain:          ${card.chain}`);
+    if (card.registeredAt) console.log(`  Registered:     ${card.registeredAt}`);
+
+    if (card.capabilities && (Array.isArray(card.capabilities) && card.capabilities.length > 0)) {
+      console.log(`\n  ── Capabilities ──`);
+      if (typeof card.capabilities[0] === 'string') {
+        card.capabilities.forEach((c: string) => console.log(`    • ${c}`));
+      } else {
+        card.capabilities.forEach((c: any) => {
+          console.log(`    • ${c.name}${c.description ? ": " + c.description : ""}`);
+          if (c.endpoint) console.log(`      endpoint: ${c.endpoint}`);
+        });
+      }
+    }
+
+    if (card.endpoints) {
+      console.log(`\n  ── Endpoints ──`);
+      for (const [key, val] of Object.entries(card.endpoints)) {
+        if (val) console.log(`    ${key}: ${val}`);
+      }
+    }
+
+    if (args.json) {
+      console.log(`\n  ── Raw JSON ──`);
+      console.log(JSON.stringify(card, null, 2));
+    }
+    console.log();
+  } catch (e: any) {
+    console.error(`❌ Failed: ${e.message}`);
+    process.exit(1);
+  }
+}
+
 async function resolveCmd(args: Record<string, string>) {
   if (!args.wallet) { console.error("Missing --wallet"); process.exit(1); }
 
@@ -655,6 +713,7 @@ async function resolveCmd(args: Record<string, string>) {
 
 // ── Main ──
 
+const CLI_VERSION = "0.9.0";
 const command = process.argv[2];
 const args = parseArgs(process.argv.slice(3));
 
@@ -675,10 +734,11 @@ switch (command) {
   case "passport": passportCmd(args); break;
   case "stats": statsCmd(); break;
   // Discovery
+  case "card": cardCmd(args); break;
   case "discover": discoverCmd(args); break;
   case "resolve": resolveCmd(args); break;
   default:
-    console.log(`SAID Protocol CLI v0.8.0
+    console.log(`SAID Protocol CLI v${CLI_VERSION}
 
 Usage:
   ── Registration & Staking ──
@@ -700,6 +760,7 @@ Usage:
   said status             --wallet <address>                  (quick registration check)
 
   ── Discovery ──
+  said card              --wallet <address> [--json]         (view ERC-8004 agent card)
   said discover           [--query <term>] [--limit <n>]      (search agents across chains)
   said resolve            --wallet <address> [--chain <name>] (resolve agent across chains)
 

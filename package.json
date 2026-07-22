@@ -1,6 +1,6 @@
 {
   "name": "@said-protocol/client",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "SAID Protocol SDK — agent identity, reputation, and cross-chain messaging on Solana",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -15,6 +15,12 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs",
       "default": "./dist/index.js"
+    },
+    "./middleware": {
+      "types": "./dist/middleware.d.ts",
+      "import": "./dist/middleware.js",
+      "require": "./dist/middleware.cjs",
+      "default": "./dist/middleware.js"
     },
     "./package.json": "./package.json"
   },

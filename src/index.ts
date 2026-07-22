@@ -1,5 +1,5 @@
 /**
- * SAID Protocol Client SDK v0.8.0
+ * SAID Protocol Client SDK v0.9.0
  * Agent identity, reputation, staking, and cross-chain messaging on Solana
  *
  * @example
@@ -923,6 +923,21 @@ export class SAIDError extends Error {
     this.details = details;
   }
 }
+
+// ── Trust Middleware (re-exported) ─────────────────────────────────────────
+
+export {
+  createTrustMiddleware,
+  expressAdapter,
+  honoAdapter,
+} from './middleware.js';
+
+export type {
+  TrustMiddlewareOptions,
+  TrustCheckResult,
+  TrustMiddlewareFn,
+  MiddlewareMode,
+} from './middleware.js';
 
 // ── Webhook Signature Verification Helper ──────────────────────────────────
 

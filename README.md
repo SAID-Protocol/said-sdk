@@ -2,7 +2,7 @@
 
 Official SDK for [SAID Protocol](https://saidprotocol.com) — agent identity, trust scoring, and cross-chain messaging on Solana.
 
-> **v0.8.0** — Now ships dual CJS + ESM builds. Works seamlessly with `import` and `require()`.
+> **v0.9.0** — Now ships trust middleware for HTTP/x402 payment gating. Works with Express, Hono, Cloudflare Workers, and any Fetch-compatible runtime.
 
 ## What is SAID?
 
@@ -218,6 +218,125 @@ function Leaderboard() {
 | `useProtocolStats()` | `{ data, loading, error }` | Protocol-wide statistics |
 | `useIsVerified(wallet)` | `{ data, loading }` | Boolean verification check |
 
+## Trust Middleware
+
+Gate HTTP endpoints, x402 payment flows, and API routes based on SAID trust scores. Three modes for different trust enforcement strategies.
+
+### Install
+
+```bash
+npm install @said-protocol/client
+```
+
+### Block Mode — Hard Reject Untrusted Agents
+
+```typescript
+import { SAIDClient, createTrustMiddleware } from '@said-protocol/client';
+
+const client = new SAIDClient();
+const mw = createTrustMiddleware(client, {
+  mode: 'block',
+  minScore: 50,
+  requireVerified: true,
+});
+
+// In any Fetch-compatible handler:
+const result = await mw(request);
+if (result.denied) {
+  return new Response(JSON.stringify({ error: result.reason }), {
+    status: 403,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+// Proceed — result.wallet, result.trustScore available
+```
+
+### Flag Mode — Pass Through with Headers
+
+```typescript
+const mw = createTrustMiddleware(client, { mode: 'flag', minScore: 40 });
+
+const result = await mw(request);
+// Request continues regardless, but trust headers are attached:
+// x-said-score: 72
+// x-said-tier: Gold
+// x-said-verified: true
+```
+
+### Escalate Mode — Require Stake
+
+```typescript
+const mw = createTrustMiddleware(client, {
+  mode: 'escalate',
+  minScore: 30,
+  minStakeSOL: 1.0,
+});
+
+const result = await mw(request);
+if (result.denied) {
+  // Agent must stake SOL to proceed
+  return new Response('Insufficient stake', { status: 402 });
+}
+```
+
+### Express Adapter
+
+```typescript
+import express from 'express';
+import { SAIDClient, createTrustMiddleware, expressAdapter } from '@said-protocol/client';
+
+const app = express();
+const mw = createTrustMiddleware(new SAIDClient(), { minScore: 50 });
+
+app.use('/api/trusted', expressAdapter(mw));
+app.get('/api/trusted/data', (req, res) => {
+  // req.said.wallet, req.said.trustScore available
+  res.json({ message: `Hello ${req.said.wallet}` });
+});
+```
+
+### Hono Adapter
+
+```typescript
+import { Hono } from 'hono';
+import { SAIDClient, createTrustMiddleware, honoAdapter } from '@said-protocol/client';
+
+const app = new Hono();
+const mw = createTrustMiddleware(new SAIDClient(), { minScore: 50 });
+
+app.use('/api/trusted/*', honoAdapter(mw));
+app.get('/api/trusted/data', (c) => {
+  const said = c.get('said');
+  return c.json({ wallet: said.wallet });
+});
+```
+
+### x402 Payment Trust Gate
+
+The middleware works as a pre-settlement trust check for x402 payment flows:
+
+```typescript
+import { SAIDClient, createTrustMiddleware } from '@said-protocol/client';
+
+const client = new SAIDClient({ keypairBytes: yourKeypair });
+const trustCheck = createTrustMiddleware(client, {
+  mode: 'block',
+  minScore: 40,
+  extractWallet: (req) => {
+    // Extract from x402 payment header
+    const auth = req.headers.get('x402-authorization');
+    return auth ? JSON.parse(atob(auth)).payer : undefined;
+  },
+});
+
+// Before settling any x402 payment:
+const result = await trustCheck(paymentRequest);
+if (result.denied) {
+  return new Response(null, { status: 402, headers: { 'x-said-reason': result.reason! } });
+}
+// Settle payment...
+```
+
 ## CLI
 
 ```bash
@@ -226,6 +345,7 @@ npx @said-protocol/client verify --keypair ./key.json
 npx @said-protocol/client trust --wallet WALLET_ADDRESS
 npx @said-protocol/client feedback --wallet WALLET_ADDRESS --limit 5
 npx @said-protocol/client leaderboard --limit 10
+npx @said-protocol/client card --wallet WALLET_ADDRESS [--json]
 npx @said-protocol/client stats
 ```
 
@@ -294,6 +414,14 @@ said emergency-unstake --keypair ./key.json         # Instant (10% penalty)
 | `deleteWebhook(chain, address)` | Remove webhook |
 | `verifyWebhookSignature(body, sig, secret)` | Verify webhook HMAC |
 
+### Trust Middleware
+
+| Method | Description |
+|--------|-------------|
+| `createTrustMiddleware(client, opts)` | Create trust-gating middleware (block/flag/escalate) |
+| `expressAdapter(mw)` | Wrap trust middleware for Express |
+| `honoAdapter(mw)` | Wrap trust middleware for Hono |
+
 ## Trust Score Dimensions
 
 SAID uses a multi-dimensional scoring system (0-100):
@@ -325,6 +453,16 @@ SAID uses a multi-dimensional scoring system (0-100):
 MIT
 
 ## Changelog
+
+### v0.9.0
+- **New:** `createTrustMiddleware()` — trust-gating middleware for HTTP/x402 payment flows (block, flag, escalate modes)
+- **New:** `expressAdapter()` — Express/Connect-compatible middleware wrapper
+- **New:** `honoAdapter()` — Hono-compatible middleware wrapper
+- **New:** `./middleware` subpath export for importing middleware independently
+- **New:** CLI `card` command — view ERC-8004 agent cards with formatted output or raw JSON
+- **New:** LICENSE file (MIT was referenced but missing from repo)
+- **New:** `.npmignore` for cleaner npm package
+- **Docs:** Comprehensive Trust Middleware section in README with x402, Express, and Hono examples
 
 ### v0.8.0
 - **Breaking (minor):** `createSAIDHooks()` is now async — returns `Promise<SAIDHooks>` instead of `SAIDHooks`. This enables proper tree-shaking of React in non-React projects.
