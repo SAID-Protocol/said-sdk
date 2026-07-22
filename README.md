@@ -2,6 +2,8 @@
 
 Official SDK for [SAID Protocol](https://saidprotocol.com) — agent identity, trust scoring, and cross-chain messaging on Solana.
 
+> **v0.8.0** — Now ships dual CJS + ESM builds. Works seamlessly with `import` and `require()`.
+
 ## What is SAID?
 
 SAID Protocol is the largest agent trust infrastructure on Solana with 6,600+ registered agents, staking/slashing enforcement, and 16+ ecosystem integrations. This SDK lets you build trust-aware applications that query agent reputation, verify identity, and send cross-chain messages.
@@ -18,6 +20,18 @@ npm install @said-protocol/client @solana/kit
 ```
 
 ## Quick Start
+
+### ESM / TypeScript
+
+```typescript
+import { SAIDClient } from '@said-protocol/client';
+```
+
+### CommonJS (Node.js)
+
+```javascript
+const { SAIDClient } = require('@said-protocol/client');
+```
 
 ### Check an Agent's Trust Score
 
@@ -156,7 +170,12 @@ The SDK ships with optional React hooks. No bundle bloat if you're not using Rea
 'use client';
 import { SAIDClient, createSAIDHooks } from '@said-protocol/client';
 
-const saidHooks = createSAIDHooks(new SAIDClient());
+// createSAIDHooks is now async (returns Promise<SAIDHooks>)
+// because React is lazy-loaded for tree-shaking
+const saidHooks = await createSAIDHooks(new SAIDClient());
+
+// Or use top-level in an async module:
+// const saidHooks = createSAIDHooks(client).then(hooks => { ... });
 
 // Agent card component
 function AgentCard({ wallet }: { wallet: string }) {
@@ -306,6 +325,18 @@ SAID uses a multi-dimensional scoring system (0-100):
 MIT
 
 ## Changelog
+
+### v0.8.0
+- **Breaking (minor):** `createSAIDHooks()` is now async — returns `Promise<SAIDHooks>` instead of `SAIDHooks`. This enables proper tree-shaking of React in non-React projects.
+- **New:** Dual CJS + ESM builds via tsup. The SDK now works with both `import` and `require()`.
+- **New:** Proper `exports` field in package.json for modern Node.js resolution.
+- **New:** `sideEffects: false` for optimal tree-shaking.
+- **New:** `engines: { node: '>=18' }` field.
+- **New:** CJS import test suite (29 tests) verifying all exports work via `require()`.
+- **New:** `test:all` script to run ESM + CJS tests together.
+- **Improved:** Build switched from `tsc` to `tsup` — faster builds, smaller output, sourcemaps.
+- **Improved:** `@solana/kit` is now an optional peer dependency (only needed for x402 payments).
+- **Fixed:** React hooks factory uses dynamic import instead of `require()` — works in ESM-only environments.
 
 ### v0.7.0
 - **New:** `getAgentCard(wallet)` — fetch ERC-8004 compliant agent card JSON for cross-protocol interop

@@ -1,25 +1,63 @@
 {
   "name": "@said-protocol/client",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "SAID Protocol SDK — agent identity, reputation, and cross-chain messaging on Solana",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "bin": {
     "said": "./dist/cli.js"
   },
-  "files": ["dist"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
   "scripts": {
-    "build": "tsc",
+    "build": "tsup",
     "test": "node test/integration.mjs",
+    "test:cjs": "node test/cjs-import.test.cjs",
+    "test:all": "npm run build && npm run test && npm run test:cjs",
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": ["said", "x402", "agent", "cross-chain", "solana", "a2a", "erc-8004", "trust-score", "agent-identity", "kya", "reputation", "staking", "slashing", "mcp"],
+  "keywords": [
+    "said",
+    "x402",
+    "agent",
+    "cross-chain",
+    "solana",
+    "a2a",
+    "erc-8004",
+    "trust-score",
+    "agent-identity",
+    "kya",
+    "reputation",
+    "staking",
+    "slashing",
+    "mcp",
+    "cjs",
+    "esm",
+    "dual-module"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/SAID-Protocol/said-sdk"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
     "@solana/web3.js": "^1.98.0",
@@ -31,8 +69,14 @@
   "peerDependencies": {
     "@solana/kit": "^2.0.0"
   },
+  "peerDependenciesMeta": {
+    "@solana/kit": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/react": "^19.2.17",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0"
   }

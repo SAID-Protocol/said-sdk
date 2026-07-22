@@ -1,5 +1,5 @@
 /**
- * SAID Protocol Client SDK v0.7.0
+ * SAID Protocol Client SDK v0.8.0
  * Agent identity, reputation, staking, and cross-chain messaging on Solana
  *
  * @example
@@ -1011,15 +1011,21 @@ export interface SAIDHooks {
  * }
  * ```
  */
-export function createSAIDHooks(client: SAIDClient): SAIDHooks {
-  // Lazy-load React only when hooks are actually used
+export async function createSAIDHooks(client: SAIDClient): Promise<SAIDHooks> {
+  // Lazy-load React — works in both ESM and CJS environments
   let react: any;
   try {
-    react = require('react');
+    react = await import('react');
   } catch {
-    throw new Error(
-      'createSAIDHooks requires React. Install it: npm install react',
-    );
+    try {
+      const { createRequire } = await import('module');
+      const require = createRequire(import.meta.url);
+      react = require('react');
+    } catch {
+      throw new Error(
+        'createSAIDHooks requires React. Install it: npm install react',
+      );
+    }
   }
 
   const { useState, useEffect, useCallback } = react as {
