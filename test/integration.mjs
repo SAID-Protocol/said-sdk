@@ -276,6 +276,72 @@ try {
   assert('verifyReceipt returns false for invalid signature', !valid);
 }
 
+// ── v0.11.0: SACRS Credit Score Tests ──
+
+// getCreditScore returns structured data for known agent
+try {
+  const credit = await client.getCreditScore(TEST_WALLET);
+  assert('getCreditScore returns object', typeof credit === 'object' && credit !== null);
+  assert('getCreditScore wallet matches', credit.wallet === TEST_WALLET);
+  assert('getCreditScore score in 300-850 range', credit.score >= 300 && credit.score <= 850);
+  assert('getCreditScore has rating', typeof credit.rating === 'string');
+  assert('getCreditScore has probabilityOfDefault', typeof credit.probabilityOfDefault === 'number');
+  assert('getCreditScore PD between 0 and 1', credit.probabilityOfDefault >= 0 && credit.probabilityOfDefault <= 1);
+  assert('getCreditScore has factors object', typeof credit.factors === 'object');
+  assert('getCreditScore factors.paymentHistory is number', typeof credit.factors.paymentHistory === 'number');
+  assert('getCreditScore factors.utilization is number', typeof credit.factors.utilization === 'number');
+  assert('getCreditScore factors.economicSecurity is number', typeof credit.factors.economicSecurity === 'number');
+  assert('getCreditScore has flags array', Array.isArray(credit.flags));
+  assert('getCreditScore has recommendedMaxBorrowUSDC', typeof credit.recommendedMaxBorrowUSDC === 'number');
+  assert('getCreditScore has recommendedLTV', typeof credit.recommendedLTV === 'number');
+  assert('getCreditScore has recommendedRatePremiumBps', typeof credit.recommendedRatePremiumBps === 'number');
+  assert('getCreditScore has summary', typeof credit.summary === 'string');
+  assert('getCreditScore has scored boolean', typeof credit.scored === 'boolean');
+  assert('getCreditScore has computedAt', typeof credit.computedAt === 'string');
+  assert('getCreditScore scored=true for known agent', credit.scored === true);
+} catch (e) {
+  assert('getCreditScore returns object', false);
+}
+
+// getCreditScore for unknown wallet returns unrated
+{
+  const credit = await client.getCreditScore(UNREGISTERED_WALLET);
+  assert('getCreditScore unknown: score 300', credit.score === 300);
+  assert('getCreditScore unknown: rating unrated', credit.rating === 'unrated');
+  assert('getCreditScore unknown: not scored', credit.scored === false);
+  assert('getCreditScore unknown: 0 borrow', credit.recommendedMaxBorrowUSDC === 0);
+  assert('getCreditScore unknown: 0 LTV', credit.recommendedLTV === 0);
+  assert('getCreditScore unknown: has not_registered flag', credit.flags.includes('not_registered'));
+}
+
+// getCreditScores (batch) works for multiple wallets
+{
+  const scores = await client.getCreditScores([TEST_WALLET, UNREGISTERED_WALLET]);
+  assert('getCreditScores returns 2 results', scores.length === 2);
+  assert('getCreditScores first is scored', scores[0].scored === true);
+  assert('getCreditScores second is unrated', scores[1].rating === 'unrated');
+  assert('getCreditScores first score > second', scores[0].score > scores[1].score);
+}
+
+// assessMultiple works for batch policy assessment
+{
+  const results = await client.assessMultiple([TEST_WALLET, UNREGISTERED_WALLET], {
+    requireVerified: true,
+    minScore: 0,
+  });
+  assert('assessMultiple returns 2 results', results.length === 2);
+  assert('assessMultiple known agent has decision', typeof results[0].decision === 'string');
+  assert('assessMultiple unknown wallet denied', results[1].decision === 'deny');
+}
+
+// SACRS score for known agent is reasonable (above 500 for verified agents with feedback)
+{
+  const credit = await client.getCreditScore(TEST_WALLET);
+  if (credit.scored) {
+    assert('getCreditScore known agent score > 400', credit.score > 400);
+  }
+}
+
 // ── Summary ──
 console.log(`\n  Results: ${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

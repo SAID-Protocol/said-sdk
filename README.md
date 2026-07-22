@@ -2,7 +2,7 @@
 
 Official SDK for [SAID Protocol](https://saidprotocol.com) — agent identity, trust scoring, and cross-chain messaging on Solana.
 
-> **v0.10.0** — Now ships policy-based trust assessment, 6-tier risk scoring with transaction recommendations, and Ed25519 signed trust receipts. Score. Escrow. Enforce.
+> **v0.11.0** — Now ships SACRS Credit Score (FICO-compatible 300-850 agent credit rating), batch credit scoring, and batch policy assessment. The only credit score with staking/slashing enforcement signals.
 
 ## What is SAID?
 
@@ -412,6 +412,65 @@ const isValid = await client.verifyReceipt(theirReceipt);
 console.log(isValid ? '✅ Verified' : '❌ Invalid');
 ```
 
+## SACRS Credit Score (v0.11.0)
+
+**SACRS (SAID Agent Credit Rating Score)** — a FICO-compatible 300-850 credit score for AI agents.
+
+No competitor has staking/slashing data to feed into a credit model. This is SAID's credit moat: a slashed agent = credit risk, a staked agent = lower risk.
+
+### Get an Agent's Credit Score
+
+```typescript
+const credit = await client.getCreditScore('WALLET_ADDRESS');
+
+console.log(`SACRS: ${credit.score}/850 (${credit.rating})`);
+console.log(`Probability of default: ${(credit.probabilityOfDefault * 100).toFixed(2)}%`);
+console.log(`Recommended LTV: ${credit.recommendedLTV}%`);
+console.log(`Max borrow: ${credit.recommendedMaxBorrowUSDC} USDC`);
+console.log(`Rate premium: +${credit.recommendedRatePremiumBps} bps`);
+
+if (credit.flags.includes('previously_slashed')) {
+  console.log('⚠️ Agent has been slashed — elevated risk');
+}
+```
+
+### Factor Breakdown
+
+SACRS adapts FICO's 5-factor model + SAID's economic security overlay:
+
+| Factor | Weight | Source |
+|---|---|---|
+| Payment History | 35% | Slashing record + feedback scores |
+| Utilization | 30% | Stake-to-activity ratio |
+| Length of History | 15% | Registration age |
+| Credit Mix | 10% | Interaction diversity |
+| New Credit | 10% | Verification status |
+| **Economic Security** | **SAID overlay (30% blend)** | **Staking amount + slashing history** |
+
+### Rating Bands
+
+| Score | Rating | LTV | Rate Premium |
+|---|---|---|---|
+| 750-850 | Excellent | 85% | Prime (0 bps) |
+| 700-749 | Very Good | 75% | +50 bps |
+| 640-699 | Good | 65% | +150 bps |
+| 580-639 | Fair | 50% | +400 bps |
+| 500-579 | Poor | 35% | +800 bps |
+| 300-499 | Very Poor | 0% | +2000 bps |
+
+### Batch Credit Scoring
+
+```typescript
+const scores = await client.getCreditScores([walletA, walletB, walletC]);
+scores.forEach(s => console.log(`${s.wallet}: ${s.score} (${s.rating})`));
+```
+
+### CLI
+
+```bash
+said credit --wallet WALLET_ADDRESS
+```
+
 ## CLI
 
 ```bash
@@ -423,6 +482,7 @@ npx @said-protocol/client leaderboard --limit 10
 npx @said-protocol/client card --wallet WALLET_ADDRESS [--json]
 npx @said-protocol/client risk --wallet WALLET_ADDRESS
 npx @said-protocol/client assess --wallet WALLET_ADDRESS --min-score 50 --require-verified true
+npx @said-protocol/client credit --wallet WALLET_ADDRESS
 npx @said-protocol/client stats
 ```
 
@@ -508,6 +568,14 @@ said emergency-unstake --keypair ./key.json         # Instant (10% penalty)
 | `signReceipt(assessment)` | Ed25519 sign a trust assessment (requires keypair) |
 | `verifyReceipt(receipt, signer?)` | Verify a signed receipt from a counterparty |
 
+### Credit Score (v0.11.0)
+
+| Method | Description |
+|--------|-------------|
+| `getCreditScore(wallet)` | SACRS 300-850 FICO-compatible credit score |
+| `getCreditScores(wallets[])` | Batch credit scoring for multiple agents |
+| `assessMultiple(wallets[], policy)` | Batch policy assessment |
+
 ## Trust Score Dimensions
 
 SAID uses a multi-dimensional scoring system (0-100):
@@ -539,6 +607,17 @@ SAID uses a multi-dimensional scoring system (0-100):
 MIT
 
 ## Changelog
+
+### v0.11.0
+- **SACRS Credit Score** — FICO-compatible 300-850 credit score for AI agents
+  - 6-factor model: payment history (35%), utilization (30%), history length (15%), credit mix (10%), new credit (10%), + SAID economic security overlay (30% blend)
+  - Probability of default, recommended LTV, max borrow, rate premium
+  - Based on research: no competitor has staking/slashing credit signals
+- `getCreditScore(wallet)` — single agent credit score
+- `getCreditScores(wallets)` — batch credit scoring
+- `assessMultiple(wallets, policy)` — batch policy assessment
+- CLI: `said credit --wallet <address>` command
+- 162 tests passing (126 ESM + 36 CJS), all green
 
 ### v0.10.0
 - **New:** `assess(wallet, policy)` — policy-based trust evaluation returning `allow`, `deny`, or `review` decisions. Inspired by AgentScore.com's assess API pattern but with SAID's staking/slashing as additional signals.

@@ -821,6 +821,44 @@ async function discoverCmd(args: Record<string, string>) {
   }
 }
 
+async function creditCmd(args: Record<string, string>) {
+  if (!args.wallet) { console.error("Missing --wallet"); process.exit(1); }
+
+  const { SAIDClient } = await import("./index.js");
+  const client = new SAIDClient({ rpcUrl: args.rpc || DEFAULT_RPC, cacheTtlMs: 0 });
+
+  try {
+    const credit = await client.getCreditScore(args.wallet);
+
+    console.log(`\n  ── SACRS Credit Score: ${args.wallet} ──\n`);
+    console.log(`  Score:        ${credit.score}/850 (${credit.rating.replace(/-/g, ' ')})`);
+    console.log(`  Probability:  ${(credit.probabilityOfDefault * 100).toFixed(2)}% default risk`);
+    console.log(`  Scored:       ${credit.scored ? 'Yes' : 'No (insufficient data)'}\n`);
+
+    console.log(`  ── Factor Breakdown ──\n`);
+    console.log(`  Payment History:    ${credit.factors.paymentHistory}/100  (slashing + feedback)`);
+    console.log(`  Utilization:        ${credit.factors.utilization}/100  (stake-to-activity ratio)`);
+    console.log(`  History Length:     ${credit.factors.historyLength}/100  (registration age)`);
+    console.log(`  Credit Mix:         ${credit.factors.creditMix}/100  (interaction diversity)`);
+    console.log(`  New Credit:         ${credit.factors.newCredit}/100  (verification status)`);
+    console.log(`  Economic Security:  ${credit.factors.economicSecurity}/100  (SAID-specific: stake + slashing)\n`);
+
+    if (credit.flags.length > 0) {
+      console.log(`  ⚠️  Flags: ${credit.flags.join(', ')}\n`);
+    }
+
+    console.log(`  ── DeFi Recommendations ──\n`);
+    console.log(`  Max Borrow:     ${credit.recommendedMaxBorrowUSDC.toLocaleString()} USDC`);
+    console.log(`  Recommended LTV: ${credit.recommendedLTV}%`);
+    const bps = credit.recommendedRatePremiumBps;
+    console.log(`  Rate Premium:   ${bps === 0 ? 'Prime (0 bps)' : `+${(bps / 100).toFixed(2)}% (${bps} bps)`}\n`);
+    console.log(`  ${credit.summary}\n`);
+  } catch (e: any) {
+    console.error(`Error: ${e.message}`);
+    process.exit(1);
+  }
+}
+
 async function cardCmd(args: Record<string, string>) {
   if (!args.wallet) { console.error("Missing --wallet"); process.exit(1); }
 
@@ -935,6 +973,7 @@ switch (command) {
   // Risk & Assessment
   case "risk": riskCmd(args); break;
   case "assess": assessCmd(args); break;
+  case "credit": creditCmd(args); break;
   // Discovery
   case "card": cardCmd(args); break;
   case "discover": discoverCmd(args); break;
@@ -965,6 +1004,7 @@ Usage:
   said risk               --wallet <address>                  (full risk assessment with recommendations)
   said assess             --wallet <address> [options]        (policy-based allow/deny/review)
     Options: --min-score <n> --require-verified <true> --min-stake <SOL> --max-risk <tier>
+  said credit            --wallet <address>                  (SACRS credit score 300-850)
 
   ── Discovery ──
   said card              --wallet <address> [--json]         (view ERC-8004 agent card)

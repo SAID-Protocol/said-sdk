@@ -34,6 +34,8 @@ const methods = [
   'registerWebhook', 'getWebhook', 'deleteWebhook', 'invalidateCache',
   // v0.10.0 methods
   'getRiskAssessment', 'assess', 'signReceipt', 'verifyReceipt',
+  // v0.11.0 methods
+  'getCreditScore', 'getCreditScores', 'assessMultiple',
 ];
 
 for (const method of methods) {
