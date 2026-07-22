@@ -1,6 +1,6 @@
 /**
- * SAID Protocol Client SDK v0.9.0
- * Agent identity, reputation, staking, and cross-chain messaging on Solana
+ * SAID Protocol Client SDK v0.10.0
+ * Agent identity, reputation, enforcement, and cross-chain messaging on Solana
  *
  * @example
  * ```ts
@@ -145,6 +145,110 @@ export interface TrustScoreBreakdown {
   longevity: number;
   fairscale: number;
   computedAt: string;
+}
+
+// ── Risk Assessment Types (v0.10.0) ────────────────────────────────────────
+
+/**
+ * Risk tier for an agent based on trust score and stake.
+ * Maps to recommended transaction parameters.
+ */
+export type RiskTier =
+  | 'minimal'    // Score 80+, verified, active stake — minimal risk
+  | 'low'        // Score 60-79, verified — low risk
+  | 'moderate'   // Score 40-59 — moderate risk, escrow recommended
+  | 'elevated'   // Score 20-39 — elevated risk, full escrow required
+  | 'high'       // Score 0-19 or unverified — high risk, block recommended
+  | 'unknown';   // Not registered — cannot assess
+
+export interface RiskAssessment {
+  /** Overall risk tier */
+  tier: RiskTier;
+  /** Trust score (0-100), or null if unknown */
+  score: number | null;
+  /** Whether the agent is verified */
+  verified: boolean;
+  /** Whether the agent is registered at all */
+  registered: boolean;
+  /** Stake in SOL (0 if no stake) */
+  stakeSOL: number;
+  /** Recommended maximum transaction value in USDC, or null for no recommendation */
+  recommendedMaxValueUSDC: number | null;
+  /** Recommended escrow percentage (0 = no escrow, 100 = full escrow) */
+  recommendedEscrowPct: number;
+  /** Recommended escrow timeout in seconds */
+  recommendedEscrowTimeoutSec: number | null;
+  /** Summary of risk factors */
+  riskFactors: string[];
+  /** Summary of positive signals */
+  positiveSignals: string[];
+  /** Human-readable summary */
+  summary: string;
+}
+
+// ── Policy Assessment Types (v0.10.0) ──────────────────────────────────────
+
+/**
+ * A trust policy that defines what's allowed.
+ * Used by the assess() method for policy-based allow/deny decisions.
+ */
+export interface TrustPolicy {
+  /** Minimum trust score required (0-100) */
+  minScore?: number;
+  /** Require SAID verification */
+  requireVerified?: boolean;
+  /** Minimum stake in SOL */
+  minStakeSOL?: number;
+  /** Require active stake status */
+  requireActiveStake?: boolean;
+  /** Maximum allowed risk tier */
+  maxRiskTier?: RiskTier;
+  /** Allowlist of wallet addresses that always pass */
+  allowlist?: string[];
+  /** Blocklist of wallet addresses that always fail */
+  blocklist?: string[];
+}
+
+export type PolicyDecision = 'allow' | 'deny' | 'review';
+
+export interface AssessmentResult {
+  /** The policy decision */
+  decision: PolicyDecision;
+  /** Why this decision was made */
+  reason: string;
+  /** The wallet that was assessed */
+  wallet: string;
+  /** Risk assessment data */
+  risk: RiskAssessment;
+  /** The policy that was evaluated */
+  policy: TrustPolicy;
+  /** Timestamp of assessment */
+  assessedAt: string;
+}
+
+// ── Signed Receipt Types (v0.10.0) ─────────────────────────────────────────
+
+/**
+ * A cryptographically signed trust check receipt.
+ * Non-repudiable proof that a trust check was performed at a specific time.
+ */
+export interface SignedReceipt {
+  /** The wallet that was checked */
+  wallet: string;
+  /** Trust score at time of check */
+  score: number | null;
+  /** Risk tier */
+  tier: RiskTier;
+  /** Decision made */
+  decision: PolicyDecision;
+  /** ISO timestamp */
+  timestamp: string;
+  /** Ed25519 signature (base58 encoded) */
+  signature: string;
+  /** Signer public key (base58 encoded) */
+  signer: string;
+  /** Original payload that was signed (JSON) */
+  payload: string;
 }
 
 export interface ReputationInfo {
@@ -764,6 +868,337 @@ export class SAIDClient {
       );
     }
   }
+
+  // ── Risk Assessment (v0.10.0) ──────────────────────────────────────────
+
+  /**
+   * Get a comprehensive risk assessment for an agent.
+   *
+   * Returns risk tier, recommended transaction parameters (max value,
+   * escrow percentage, escrow timeout), and lists of risk factors and
+   * positive signals.
+   *
+   * This is the primary method for determining HOW to interact with an
+   * agent, not just WHETHER to interact.
+   *
+   * @example
+   * ```ts
+   * const risk = await client.getRiskAssessment('WALLET_ADDRESS');
+   * if (risk.tier === 'high') {
+   *   console.log('Do not transact');
+   * } else {
+   *   console.log(`Max: ${risk.recommendedMaxValueUSDC} USDC`);
+   *   console.log(`Escrow: ${risk.recommendedEscrowPct}%`);
+   * }
+   * ```
+   */
+  async getRiskAssessment(wallet: string): Promise<RiskAssessment> {
+    const [agent, stake] = await Promise.all([
+      this.getAgent(wallet),
+      this.getStakeInfo(wallet),
+    ]);
+
+    const score = agent.trustScore?.score ?? null;
+    const verified = agent.verified;
+    const registered = agent.registered;
+    const stakeSOL = stake.amountSOL;
+    const riskFactors: string[] = [];
+    const positiveSignals: string[] = [];
+
+    if (!registered) {
+      return {
+        tier: 'unknown',
+        score: null,
+        verified: false,
+        registered: false,
+        stakeSOL: 0,
+        recommendedMaxValueUSDC: 0,
+        recommendedEscrowPct: 100,
+        recommendedEscrowTimeoutSec: null,
+        riskFactors: ['Agent not registered with SAID Protocol'],
+        positiveSignals: [],
+        summary: 'Unknown agent — no trust data available. Do not transact without full escrow.',
+      };
+    }
+
+    // Collect signals
+    if (verified) positiveSignals.push('SAID-verified agent');
+    else riskFactors.push('Agent not verified');
+
+    if (stakeSOL >= 1.0) positiveSignals.push(`${stakeSOL.toFixed(2)} SOL staked (skin in the game)`);
+    else if (stakeSOL > 0) riskFactors.push(`Low stake (${stakeSOL.toFixed(2)} SOL)`);
+    else riskFactors.push('No stake deposited');
+
+    if (stake.slashedCount > 0) riskFactors.push(`${stake.slashedCount} slashing event(s)`);
+
+    if (score !== null) {
+      if (score >= 80) positiveSignals.push(`High trust score (${score}/100)`);
+      else if (score >= 60) positiveSignals.push(`Good trust score (${score}/100)`);
+      else if (score < 40) riskFactors.push(`Low trust score (${score}/100)`);
+    }
+
+    if (agent.reputation && agent.reputation.feedbackCount > 5) {
+      positiveSignals.push(`${agent.reputation.feedbackCount} feedback entries`);
+    }
+
+    // Determine tier and recommendations
+    let tier: RiskTier;
+    let recommendedMaxValueUSDC: number | null;
+    let recommendedEscrowPct: number;
+    let recommendedEscrowTimeoutSec: number | null;
+
+    const effectiveScore = score ?? 0;
+
+    if (!verified || effectiveScore < 20) {
+      tier = 'high';
+      recommendedMaxValueUSDC = 0;
+      recommendedEscrowPct = 100;
+      recommendedEscrowTimeoutSec = 7 * 24 * 3600; // 7 days
+    } else if (effectiveScore < 40) {
+      tier = 'elevated';
+      recommendedMaxValueUSDC = 100;
+      recommendedEscrowPct = 100;
+      recommendedEscrowTimeoutSec = 3 * 24 * 3600; // 3 days
+    } else if (effectiveScore < 60) {
+      tier = 'moderate';
+      recommendedMaxValueUSDC = 1000;
+      recommendedEscrowPct = 50;
+      recommendedEscrowTimeoutSec = 24 * 3600; // 1 day
+    } else if (effectiveScore < 80) {
+      tier = 'low';
+      recommendedMaxValueUSDC = 5000;
+      recommendedEscrowPct = 0;
+      recommendedEscrowTimeoutSec = null;
+    } else {
+      // Score 80+ — but only 'minimal' if staked
+      tier = stakeSOL >= 0.5 ? 'minimal' : 'low';
+      recommendedMaxValueUSDC = stakeSOL >= 0.5 ? null : 5000; // null = no limit
+      recommendedEscrowPct = 0;
+      recommendedEscrowTimeoutSec = null;
+    }
+
+    // Build summary
+    const tierEmoji = tier === 'minimal' ? '🟢' : tier === 'low' ? '🟢' :
+      tier === 'moderate' ? '🟡' : tier === 'elevated' ? '🟠' :
+      tier === 'high' ? '🔴' : '⚫';
+
+    const summary = `${tierEmoji} ${tier.toUpperCase()} risk — Score: ${score ?? 'N/A'}/100, Staked: ${stakeSOL.toFixed(2)} SOL, Verified: ${verified ? 'Yes' : 'No'}`;
+
+    return {
+      tier,
+      score,
+      verified,
+      registered,
+      stakeSOL,
+      recommendedMaxValueUSDC,
+      recommendedEscrowPct,
+      recommendedEscrowTimeoutSec,
+      riskFactors,
+      positiveSignals,
+      summary,
+    };
+  }
+
+  // ── Policy Assessment (v0.10.0) ────────────────────────────────────────
+
+  /**
+   * Evaluate an agent against a trust policy.
+   *
+   * Returns a structured decision: 'allow', 'deny', or 'review'.
+   * This is the primary method for building trust-gated applications.
+   *
+   * Inspired by AgentScore.com's assess API pattern — but with SAID's
+   * staking/slashing enforcement as an additional signal.
+   *
+   * @example
+   * ```ts
+   * const result = await client.assess('WALLET_ADDRESS', {
+   *   minScore: 50,
+   *   requireVerified: true,
+   *   minStakeSOL: 0.5,
+   *   maxRiskTier: 'moderate',
+   * });
+   *
+   * if (result.decision === 'allow') {
+   *   // Proceed with transaction
+   * } else if (result.decision === 'review') {
+   *   // Send to manual review
+   * } else {
+   *   // Block
+   * }
+   * ```
+   */
+  async assess(
+    wallet: string,
+    policy: TrustPolicy,
+  ): Promise<AssessmentResult> {
+    // Check allowlist/blocklist first
+    if (policy.blocklist?.includes(wallet)) {
+      const risk = await this.getRiskAssessment(wallet);
+      return {
+        decision: 'deny',
+        reason: 'Wallet is on blocklist',
+        wallet,
+        risk,
+        policy,
+        assessedAt: new Date().toISOString(),
+      };
+    }
+
+    if (policy.allowlist?.includes(wallet)) {
+      const risk = await this.getRiskAssessment(wallet);
+      return {
+        decision: 'allow',
+        reason: 'Wallet is on allowlist',
+        wallet,
+        risk,
+        policy,
+        assessedAt: new Date().toISOString(),
+      };
+    }
+
+    const risk = await this.getRiskAssessment(wallet);
+    const reasons: string[] = [];
+    let shouldReview = false;
+
+    // Check each policy condition
+    if (policy.requireVerified && !risk.verified) {
+      reasons.push('Agent not verified');
+    }
+
+    if (policy.minScore !== undefined && (risk.score ?? 0) < policy.minScore) {
+      reasons.push(`Score ${risk.score ?? 0} below minimum ${policy.minScore}`);
+    }
+
+    if (policy.minStakeSOL !== undefined && risk.stakeSOL < policy.minStakeSOL) {
+      reasons.push(`Stake ${risk.stakeSOL.toFixed(4)} SOL below minimum ${policy.minStakeSOL} SOL`);
+    }
+
+    if (policy.requireActiveStake && risk.stakeSOL <= 0) {
+      reasons.push('No active stake');
+    }
+
+    if (policy.maxRiskTier) {
+      const tierOrder: RiskTier[] = ['minimal', 'low', 'moderate', 'elevated', 'high', 'unknown'];
+      const maxIdx = tierOrder.indexOf(policy.maxRiskTier);
+      const actualIdx = tierOrder.indexOf(risk.tier);
+      if (actualIdx > maxIdx) {
+        reasons.push(`Risk tier '${risk.tier}' exceeds maximum '${policy.maxRiskTier}'`);
+      }
+    }
+
+    // Determine decision
+    let decision: PolicyDecision;
+    let reason: string;
+
+    if (reasons.length === 0) {
+      decision = 'allow';
+      reason = risk.positiveSignals.length > 0
+        ? `Approved: ${risk.positiveSignals.join(', ')}`
+        : 'Approved';
+    } else {
+      // Hard denials: unregistered, high risk, blocklisted conditions
+      if (!risk.registered || risk.tier === 'high' || risk.tier === 'unknown') {
+        decision = 'deny';
+      } else {
+        // Moderate violations → review instead of hard deny
+        decision = 'review';
+        shouldReview = true;
+      }
+      reason = reasons.join('; ');
+    }
+
+    return {
+      decision,
+      reason,
+      wallet,
+      risk,
+      policy,
+      assessedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Sign a trust check result as a non-repudiable receipt.
+   *
+   * Requires keypairBytes to be set in client config.
+   * Produces an Ed25519 signature over the assessment payload.
+   *
+   * @example
+   * ```ts
+   * const client = new SAIDClient({ keypairBytes: yourKeypair });
+   * const assessment = await client.assess(wallet, policy);
+   * const receipt = await client.signReceipt(assessment);
+   * // receipt.signature can be verified by counterparty
+   * ```
+   */
+  async signReceipt(assessment: AssessmentResult): Promise<SignedReceipt> {
+    if (!this.keypairBytes) {
+      throw new SAIDError('Keypair required for signing receipts. Pass keypairBytes in config.', 400);
+    }
+
+    const nacl: any = await import('tweetnacl');
+    const sign = nacl.default?.sign || nacl.sign;
+    const bs58mod: any = await import('bs58');
+    const encodeBase58 = bs58mod.default?.encode || bs58mod.encode;
+    const { PublicKey } = await import('@solana/web3.js');
+
+    const payload = JSON.stringify({
+      wallet: assessment.wallet,
+      score: assessment.risk.score,
+      tier: assessment.risk.tier,
+      decision: assessment.decision,
+      timestamp: assessment.assessedAt,
+    });
+
+    const messageBytes = new TextEncoder().encode(payload);
+    const signature = sign.detached(messageBytes, this.keypairBytes);
+    const signer = new PublicKey(this.keypairBytes.slice(32, 64));
+
+    return {
+      wallet: assessment.wallet,
+      score: assessment.risk.score,
+      tier: assessment.risk.tier,
+      decision: assessment.decision,
+      timestamp: assessment.assessedAt,
+      signature: encodeBase58(signature),
+      signer: signer.toBase58(),
+      payload,
+    };
+  }
+
+  /**
+   * Verify a signed receipt from a counterparty.
+   *
+   * @example
+   * ```ts
+   * const isValid = await client.verifyReceipt(receipt, signerPublicKey);
+   * ```
+   */
+  async verifyReceipt(
+    receipt: SignedReceipt,
+    expectedSigner?: string,
+  ): Promise<boolean> {
+    const nacl: any = await import('tweetnacl');
+    const sign = nacl.default?.sign || nacl.sign;
+    const bs58mod: any = await import('bs58');
+    const decodeBase58 = bs58mod.default?.decode || bs58mod.decode;
+
+    if (expectedSigner && receipt.signer !== expectedSigner) {
+      return false;
+    }
+
+    const messageBytes = new TextEncoder().encode(receipt.payload);
+
+    try {
+      const signature = decodeBase58(receipt.signature);
+      const publicKey = decodeBase58(receipt.signer);
+      return sign.detached.verify(messageBytes, signature, publicKey);
+    } catch {
+      return false;
+    }
+  }
+
 
   // ── Messaging ──────────────────────────────────────────────────────────
 

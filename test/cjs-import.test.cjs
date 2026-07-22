@@ -32,6 +32,8 @@ const methods = [
   'filterTrusted', 'sendMessage', 'getInbox', 'resolveAgent',
   'discover', 'getChains', 'getStats', 'getFreeTier',
   'registerWebhook', 'getWebhook', 'deleteWebhook', 'invalidateCache',
+  // v0.10.0 methods
+  'getRiskAssessment', 'assess', 'signReceipt', 'verifyReceipt',
 ];
 
 for (const method of methods) {

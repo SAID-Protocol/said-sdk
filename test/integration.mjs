@@ -182,6 +182,100 @@ const freeTier = await client.getFreeTier(TEST_WALLET);
 assert('getFreeTier returns address', typeof freeTier.address === 'string');
 assert('getFreeTier returns remaining', typeof freeTier.remaining === 'number');
 
+// ── v0.10.0: Risk Assessment & Policy Tests ──
+
+// getRiskAssessment returns structured data
+try {
+  const risk = await client.getRiskAssessment(TEST_WALLET);
+  assert('getRiskAssessment returns object', typeof risk === 'object' && risk !== null);
+  assert('getRiskAssessment has tier', typeof risk.tier === 'string');
+  assert('getRiskAssessment has score', typeof risk.score === 'number' || risk.score === null);
+  assert('getRiskAssessment has verified', typeof risk.verified === 'boolean');
+  assert('getRiskAssessment has registered', typeof risk.registered === 'boolean');
+  assert('getRiskAssessment has stakeSOL', typeof risk.stakeSOL === 'number');
+  assert('getRiskAssessment has riskFactors array', Array.isArray(risk.riskFactors));
+  assert('getRiskAssessment has positiveSignals array', Array.isArray(risk.positiveSignals));
+  assert('getRiskAssessment has summary', typeof risk.summary === 'string');
+  assert('getRiskAssessment has recommendedMaxValueUSDC', risk.recommendedMaxValueUSDC === null || typeof risk.recommendedMaxValueUSDC === 'number');
+  assert('getRiskAssessment has recommendedEscrowPct', typeof risk.recommendedEscrowPct === 'number');
+} catch (e) {
+  assert('getRiskAssessment returns object', false);
+}
+
+// getRiskAssessment for unknown wallet returns unknown tier
+{
+  const risk = await client.getRiskAssessment(UNREGISTERED_WALLET);
+  assert('getRiskAssessment unknown: tier is unknown', risk.tier === 'unknown');
+  assert('getRiskAssessment unknown: not registered', !risk.registered);
+  assert('getRiskAssessment unknown: 0 stake', risk.stakeSOL === 0);
+}
+
+// assess with empty policy for known agent
+{
+  const result = await client.assess(TEST_WALLET, {});
+  assert('assess empty policy: returns decision', typeof result.decision === 'string');
+  assert('assess empty policy: has reason', typeof result.reason === 'string');
+  assert('assess empty policy: has wallet', result.wallet === TEST_WALLET);
+  assert('assess empty policy: has risk object', typeof result.risk === 'object');
+  assert('assess empty policy: has policy object', typeof result.policy === 'object');
+  assert('assess empty policy: has assessedAt', typeof result.assessedAt === 'string');
+}
+
+// assess with strict policy denies unknown wallet
+{
+  const result = await client.assess(UNREGISTERED_WALLET, { minScore: 50, requireVerified: true });
+  assert('assess strict policy: unknown wallet denied', result.decision === 'deny');
+  assert('assess strict policy: has reason', result.reason.length > 0);
+}
+
+// assess with allowlist
+{
+  const result = await client.assess(UNREGISTERED_WALLET, { allowlist: [UNREGISTERED_WALLET] });
+  assert('assess allowlist: unknown wallet allowed', result.decision === 'allow');
+  assert('assess allowlist: reason mentions allowlist', result.reason.includes('allowlist'));
+}
+
+// assess with blocklist
+{
+  const result = await client.assess(TEST_WALLET, { blocklist: [TEST_WALLET] });
+  assert('assess blocklist: known wallet denied', result.decision === 'deny');
+  assert('assess blocklist: reason mentions blocklist', result.reason.includes('blocklist'));
+}
+
+// assess with minStakeSOL (very high → should not be allow)
+{
+  const result = await client.assess(TEST_WALLET, { minStakeSOL: 999 });
+  assert('assess high minStake: not allowed', result.decision !== 'allow');
+}
+
+// signReceipt requires keypair (should throw without one)
+{
+  let threw = false;
+  try {
+    const assessment = await client.assess(TEST_WALLET, {});
+    await client.signReceipt(assessment);
+  } catch (e) {
+    threw = true;
+  }
+  assert('signReceipt throws without keypair', threw);
+}
+
+// verifyReceipt with invalid data returns false
+{
+  const fakeReceipt = {
+    wallet: 'Fake',
+    score: 50,
+    tier: 'moderate',
+    decision: 'allow',
+    timestamp: new Date().toISOString(),
+    signature: 'fake',
+    signer: 'Fake',
+    payload: '{}',
+  };
+  const valid = await client.verifyReceipt(fakeReceipt);
+  assert('verifyReceipt returns false for invalid signature', !valid);
+}
+
 // ── Summary ──
 console.log(`\n  Results: ${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

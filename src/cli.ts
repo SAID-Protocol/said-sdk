@@ -588,6 +588,205 @@ async function statsCmd() {
   }
 }
 
+// ── Risk & Assessment Commands (v0.10.0) ──
+
+async function riskCmd(args: Record<string, string>) {
+  if (!args.wallet) { console.error("Missing --wallet"); process.exit(1); }
+
+  try {
+    // Inline risk assessment using the API
+    const [agentRes, connection2] = await Promise.all([
+      fetch(`${API_BASE}/api/verify/${args.wallet}`),
+      import("@solana/web3.js"),
+    ]);
+
+    if (!agentRes.ok) {
+      console.error(`❌ Failed to fetch agent data`);
+      process.exit(1);
+    }
+
+    const agent = await agentRes.json();
+    const { Connection, PublicKey } = connection2;
+    const rpc = args.rpc || DEFAULT_RPC;
+    const conn = new Connection(rpc, "confirmed");
+
+    // Get stake info
+    const ownerPk = new PublicKey(args.wallet);
+    const programId = PROGRAM_ID;
+    const [agentPDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from("agent"), ownerPk.toBuffer()],
+      programId,
+    );
+    const [stakePDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from("stake"), agentPDA.toBuffer()],
+      programId,
+    );
+    const stakeAccount = await conn.getAccountInfo(stakePDA);
+
+    let stakeSOL = 0;
+    let slashedCount = 0;
+    if (stakeAccount?.data) {
+      const data = stakeAccount.data;
+      stakeSOL = Number(data.readBigUInt64LE(48)) / 1_000_000_000;
+      slashedCount = Number(data.readBigUInt64LE(65));
+    }
+
+    const score = agent.trustScore?.score ?? null;
+    const verified = agent.verified;
+    const registered = agent.registered;
+
+    // Determine tier
+    let tier: string;
+    let maxUSDC: string;
+    let escrowPct: string;
+
+    if (!registered) {
+      tier = "UNKNOWN ⚫";
+      maxUSDC = "0";
+      escrowPct = "100% (full escrow)";
+    } else if (!verified || (score ?? 0) < 20) {
+      tier = "HIGH 🔴";
+      maxUSDC = "0 (block recommended)";
+      escrowPct = "100% (full escrow)";
+    } else if ((score ?? 0) < 40) {
+      tier = "ELEVATED 🟠";
+      maxUSDC = "100 USDC";
+      escrowPct = "100% (full escrow)";
+    } else if ((score ?? 0) < 60) {
+      tier = "MODERATE 🟡";
+      maxUSDC = "1,000 USDC";
+      escrowPct = "50%";
+    } else if ((score ?? 0) < 80) {
+      tier = "LOW 🟢";
+      maxUSDC = "5,000 USDC";
+      escrowPct = "None required";
+    } else {
+      tier = stakeSOL >= 0.5 ? "MINIMAL 🟢" : "LOW 🟢";
+      maxUSDC = "No limit";
+      escrowPct = "None required";
+    }
+
+    console.log(`\n  ╔══ Risk Assessment ══╗\n`);
+    console.log(`  Agent:     ${agent.identity?.name || "Unnamed"} (${args.wallet.slice(0, 8)}...)`);
+    console.log(`  Tier:      ${tier}`);
+    console.log(`  Score:     ${score !== null ? `${score}/100` : "N/A"}`);
+    console.log(`  Verified:  ${verified ? "✅" : "❌"}`);
+    console.log(`  Stake:     ${stakeSOL.toFixed(4)} SOL`);
+    if (slashedCount > 0) console.log(`  Slashes:   ${slashedCount} 🔴`);
+    console.log(`\n  ── Recommendations ──`);
+    console.log(`  Max Value:   ${maxUSDC}`);
+    console.log(`  Escrow:      ${escrowPct}`);
+
+    // Risk factors
+    const factors: string[] = [];
+    const positives: string[] = [];
+    if (!verified) factors.push("Not verified");
+    else positives.push("SAID-verified");
+    if (stakeSOL === 0) factors.push("No stake deposited");
+    else positives.push(`${stakeSOL.toFixed(2)} SOL staked`);
+    if (slashedCount > 0) factors.push(`${slashedCount} slash event(s)`);
+    if (score !== null && score < 40) factors.push(`Low score (${score})`);
+    if (score !== null && score >= 70) positives.push(`High score (${score})`);
+
+    if (factors.length > 0) {
+      console.log(`\n  ⚠️  Risk Factors:`);
+      factors.forEach(f => console.log(`     • ${f}`));
+    }
+    if (positives.length > 0) {
+      console.log(`\n  ✅ Positive Signals:`);
+      positives.forEach(p => console.log(`     • ${p}`));
+    }
+    console.log();
+  } catch (e: any) {
+    console.error(`❌ Failed: ${e.message}`);
+    process.exit(1);
+  }
+}
+
+async function assessCmd(args: Record<string, string>) {
+  if (!args.wallet) { console.error("Missing --wallet"); process.exit(1); }
+
+  const minScore = args["min-score"] ? parseInt(args["min-score"]) : 0;
+  const requireVerified = args["require-verified"] === "true" || args["require-verified"] === "1";
+  const minStake = args["min-stake"] ? parseFloat(args["min-stake"]) : 0;
+  const maxRisk = args["max-risk"] || "high";
+
+  try {
+    // Build and evaluate inline (same logic as SDK assess method)
+    const [agentRes, connectionMod] = await Promise.all([
+      fetch(`${API_BASE}/api/verify/${args.wallet}`),
+      import("@solana/web3.js"),
+    ]);
+
+    if (!agentRes.ok) throw new Error(`HTTP ${agentRes.status}`);
+    const agent = await agentRes.json();
+
+    const { Connection, PublicKey } = connectionMod;
+    const rpc = args.rpc || DEFAULT_RPC;
+    const conn = new Connection(rpc, "confirmed");
+
+    const ownerPk = new PublicKey(args.wallet);
+    const [agentPDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from("agent"), ownerPk.toBuffer()], PROGRAM_ID,
+    );
+    const [stakePDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from("stake"), agentPDA.toBuffer()], PROGRAM_ID,
+    );
+    const stakeAccount = await conn.getAccountInfo(stakePDA);
+    let stakeSOL = 0;
+    if (stakeAccount?.data) {
+      stakeSOL = Number(stakeAccount.data.readBigUInt64LE(48)) / 1_000_000_000;
+    }
+
+    const score = agent.trustScore?.score ?? 0;
+    const reasons: string[] = [];
+
+    if (requireVerified && !agent.verified) reasons.push("Agent not verified");
+    if (score < minScore) reasons.push(`Score ${score} below minimum ${minScore}`);
+    if (stakeSOL < minStake) reasons.push(`Stake ${stakeSOL.toFixed(4)} SOL below minimum ${minStake} SOL`);
+
+    const tierOrder = ["minimal", "low", "moderate", "elevated", "high", "unknown"];
+    const actualTier = !agent.registered ? "unknown" :
+      !agent.verified || score < 20 ? "high" :
+      score < 40 ? "elevated" :
+      score < 60 ? "moderate" :
+      score < 80 ? "low" : "minimal";
+    if (tierOrder.indexOf(actualTier) > tierOrder.indexOf(maxRisk)) {
+      reasons.push(`Risk tier '${actualTier}' exceeds maximum '${maxRisk}'`);
+    }
+
+    let decision: string;
+    let emoji: string;
+    if (reasons.length === 0) {
+      decision = "ALLOW";
+      emoji = "✅";
+    } else if (!agent.registered || actualTier === "high" || actualTier === "unknown") {
+      decision = "DENY";
+      emoji = "🔴";
+    } else {
+      decision = "REVIEW";
+      emoji = "🟡";
+    }
+
+    console.log(`\n  ╔══ Policy Assessment ══╗\n`);
+    console.log(`  ${emoji}  Decision: ${decision}`);
+    console.log(`  Agent:   ${agent.identity?.name || "Unnamed"} (${args.wallet.slice(0, 8)}...)`);
+    console.log(`  Score:   ${score}/100`);
+    console.log(`  Tier:    ${actualTier}`);
+    console.log(`  Stake:   ${stakeSOL.toFixed(4)} SOL`);
+    if (reasons.length > 0) {
+      console.log(`\n  Reasons:`);
+      reasons.forEach(r => console.log(`    • ${r}`));
+    } else {
+      console.log(`\n  All policy checks passed.`);
+    }
+    console.log();
+  } catch (e: any) {
+    console.error(`❌ Failed: ${e.message}`);
+    process.exit(1);
+  }
+}
+
 // ── Discovery Commands ──
 
 async function discoverCmd(args: Record<string, string>) {
@@ -713,7 +912,7 @@ async function resolveCmd(args: Record<string, string>) {
 
 // ── Main ──
 
-const CLI_VERSION = "0.9.0";
+const CLI_VERSION = "0.10.0";
 const command = process.argv[2];
 const args = parseArgs(process.argv.slice(3));
 
@@ -733,6 +932,9 @@ switch (command) {
   case "leaderboard": leaderboardCmd(args); break;
   case "passport": passportCmd(args); break;
   case "stats": statsCmd(); break;
+  // Risk & Assessment
+  case "risk": riskCmd(args); break;
+  case "assess": assessCmd(args); break;
   // Discovery
   case "card": cardCmd(args); break;
   case "discover": discoverCmd(args); break;
@@ -758,6 +960,11 @@ Usage:
   said passport           --wallet <address>                  (check soulbound passport)
   said stats                                                 (protocol-wide statistics)
   said status             --wallet <address>                  (quick registration check)
+
+  ── Risk & Assessment ──
+  said risk               --wallet <address>                  (full risk assessment with recommendations)
+  said assess             --wallet <address> [options]        (policy-based allow/deny/review)
+    Options: --min-score <n> --require-verified <true> --min-stake <SOL> --max-risk <tier>
 
   ── Discovery ──
   said card              --wallet <address> [--json]         (view ERC-8004 agent card)

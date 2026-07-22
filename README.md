@@ -2,7 +2,7 @@
 
 Official SDK for [SAID Protocol](https://saidprotocol.com) — agent identity, trust scoring, and cross-chain messaging on Solana.
 
-> **v0.9.0** — Now ships trust middleware for HTTP/x402 payment gating. Works with Express, Hono, Cloudflare Workers, and any Fetch-compatible runtime.
+> **v0.10.0** — Now ships policy-based trust assessment, 6-tier risk scoring with transaction recommendations, and Ed25519 signed trust receipts. Score. Escrow. Enforce.
 
 ## What is SAID?
 
@@ -337,6 +337,81 @@ if (result.denied) {
 // Settle payment...
 ```
 
+## Risk Assessment
+
+Get a comprehensive risk tier and transaction recommendations for any agent.
+
+```typescript
+const risk = await client.getRiskAssessment('WALLET_ADDRESS');
+
+console.log(risk.tier);        // 'minimal' | 'low' | 'moderate' | 'elevated' | 'high' | 'unknown'
+console.log(risk.score);       // 0-100 or null
+console.log(risk.recommendedMaxValueUSDC);  // null = no limit, 0 = block
+console.log(risk.recommendedEscrowPct);     // 0-100
+console.log(risk.riskFactors);   // ['No stake deposited', 'Low score (15)']
+console.log(risk.positiveSignals); // ['SAID-verified', '2.5 SOL staked']
+```
+
+### Risk Tiers
+
+| Tier | Score | Max USDC | Escrow | Use Case |
+|------|-------|----------|--------|----------|
+| Minimal | 80+ + staked | No limit | None | Trusted partner |
+| Low | 60-79 | 5,000 | None | Standard commerce |
+| Moderate | 40-59 | 1,000 | 50% | Escrow recommended |
+| Elevated | 20-39 | 100 | 100% | Full escrow required |
+| High | 0-19 or unverified | 0 | 100% | Block recommended |
+| Unknown | Not registered | 0 | 100% | Do not transact |
+
+## Policy Assessment
+
+Evaluate agents against a trust policy with structured `allow`/`deny`/`review` decisions.
+
+```typescript
+const result = await client.assess('WALLET_ADDRESS', {
+  minScore: 50,
+  requireVerified: true,
+  minStakeSOL: 0.5,
+  maxRiskTier: 'moderate',
+  allowlist: ['KNOWN_SAFE_WALLET'],
+  blocklist: ['KNOWN_BAD_WALLET'],
+});
+
+if (result.decision === 'allow') {
+  // Proceed with transaction
+} else if (result.decision === 'review') {
+  // Send to manual review queue
+} else {
+  // Block
+  console.log(result.reason);
+}
+```
+
+### Decision Logic
+
+- **`allow`** — All policy checks passed
+- **`deny`** — Hard failure (unregistered, high risk, blocklisted, unknown)
+- **`review`** — Moderate violations that a human should review (e.g., insufficient stake, low score)
+
+## Signed Receipts
+
+Create non-repudiable proof of trust checks with Ed25519 signatures.
+
+```typescript
+const client = new SAIDClient({ keypairBytes: yourKeypair });
+
+// Assess and sign
+const assessment = await client.assess(wallet, { minScore: 50 });
+const receipt = await client.signReceipt(assessment);
+
+// receipt.signature is Ed25519 signed
+// Send receipt to counterparty as proof of trust check
+
+// Verify a receipt from someone else
+const isValid = await client.verifyReceipt(theirReceipt);
+console.log(isValid ? '✅ Verified' : '❌ Invalid');
+```
+
 ## CLI
 
 ```bash
@@ -346,6 +421,8 @@ npx @said-protocol/client trust --wallet WALLET_ADDRESS
 npx @said-protocol/client feedback --wallet WALLET_ADDRESS --limit 5
 npx @said-protocol/client leaderboard --limit 10
 npx @said-protocol/client card --wallet WALLET_ADDRESS [--json]
+npx @said-protocol/client risk --wallet WALLET_ADDRESS
+npx @said-protocol/client assess --wallet WALLET_ADDRESS --min-score 50 --require-verified true
 npx @said-protocol/client stats
 ```
 
@@ -422,6 +499,15 @@ said emergency-unstake --keypair ./key.json         # Instant (10% penalty)
 | `expressAdapter(mw)` | Wrap trust middleware for Express |
 | `honoAdapter(mw)` | Wrap trust middleware for Hono |
 
+### Risk & Assessment (v0.10.0)
+
+| Method | Description |
+|--------|-------------|
+| `getRiskAssessment(wallet)` | 6-tier risk model with transaction recommendations |
+| `assess(wallet, policy)` | Policy-based allow/deny/review decision |
+| `signReceipt(assessment)` | Ed25519 sign a trust assessment (requires keypair) |
+| `verifyReceipt(receipt, signer?)` | Verify a signed receipt from a counterparty |
+
 ## Trust Score Dimensions
 
 SAID uses a multi-dimensional scoring system (0-100):
@@ -453,6 +539,19 @@ SAID uses a multi-dimensional scoring system (0-100):
 MIT
 
 ## Changelog
+
+### v0.10.0
+- **New:** `assess(wallet, policy)` — policy-based trust evaluation returning `allow`, `deny`, or `review` decisions. Inspired by AgentScore.com's assess API pattern but with SAID's staking/slashing as additional signals.
+- **New:** `getRiskAssessment(wallet)` — comprehensive 6-tier risk model (minimal → unknown) with recommended transaction parameters (max USDC value, escrow percentage, escrow timeout). Includes risk factors and positive signals.
+- **New:** `signReceipt(assessment)` — Ed25519 signed trust receipts for non-repudiable proof of trust checks. Requires keypair.
+- **New:** `verifyReceipt(receipt)` — Verify a counterparty's signed receipt.
+- **New:** CLI `risk` command — full risk assessment with transaction recommendations.
+- **New:** CLI `assess` command — policy-based allow/deny/review from the command line.
+- **New:** `TrustPolicy` type with allowlist, blocklist, minScore, requireVerified, minStakeSOL, requireActiveStake, maxRiskTier.
+- **New:** `RiskTier` type — 6 risk tiers mapping to transaction parameters.
+- **New:** `SignedReceipt` type — Ed25519-signed proof of trust assessment.
+- **Improved:** 29 new tests covering risk assessment, policy evaluation, and receipt signing (127 total).
+- **Docs:** New sections in README for Risk Assessment, Policy Assessment, and Signed Receipts.
 
 ### v0.9.0
 - **New:** `createTrustMiddleware()` — trust-gating middleware for HTTP/x402 payment flows (block, flag, escalate modes)
