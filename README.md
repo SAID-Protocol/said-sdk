@@ -2,7 +2,7 @@
 
 Official SDK for [SAID Protocol](https://saidprotocol.com) — agent identity, trust scoring, and cross-chain messaging on Solana.
 
-> **v0.11.0** — Now ships SACRS Credit Score (FICO-compatible 300-850 agent credit rating), batch credit scoring, and batch policy assessment. The only credit score with staking/slashing enforcement signals.
+> **v0.12.0** — Now ships Dual-Score Model (Provider + Consumer trust, inspired by AgentKarma's best idea), Trust Summary (one-call comprehensive overview), and batch stake queries. The only credit score with staking/slashing enforcement signals.
 
 ## What is SAID?
 
@@ -471,6 +471,61 @@ scores.forEach(s => console.log(`${s.wallet}: ${s.score} (${s.rating})`));
 said credit --wallet WALLET_ADDRESS
 ```
 
+## Dual-Score Model (v0.12.0)
+
+Separates **provider trust** ("will this agent deliver?") from **consumer trust** ("will this agent pay?").
+
+Inspired by AgentKarma's Provider/Consumer Karma split — their best idea before they shut down. Enhanced with SAID's staking/slashing as economic enforcement signals.
+
+```typescript
+const dual = await client.getDualScore('WALLET_ADDRESS');
+
+console.log(`Provider: ${dual.provider.score}/100 (${dual.provider.confidence})`);
+console.log(`Consumer: ${dual.consumer.score}/100 (${dual.consumer.confidence})`);
+console.log(`Overall:  ${dual.overall}/100`);
+
+// Provider signals: SAID-verified, High reputation, 12 feedback entries
+// Consumer signals: 2.5 SOL staked, No slashing history
+
+// Use case: require upfront payment from agents with low consumer scores
+if (dual.consumer.score < 30 && dual.consumer.confidence !== 'none') {
+  requireUpfrontPayment();
+}
+```
+
+### Why Dual Scoring?
+
+A single trust score conflates two distinct questions:
+
+| Question | What it measures | Key signals |
+|----------|-----------------|-------------|
+| **Provider** | Delivery quality | Feedback, reputation, verification, history |
+| **Consumer** | Payment reliability | Staking, slashing, economic security |
+
+An agent can be excellent at delivering work but unreliable at paying — or vice versa.
+
+## Trust Summary (v0.12.0)
+
+One-call comprehensive trust overview — combines all SAID signals:
+
+```typescript
+const summary = await client.getTrustSummary('WALLET_ADDRESS');
+
+// Everything in one response:
+console.log(summary.trustScore?.score);    // Trust score breakdown
+console.log(summary.risk.tier);             // Risk assessment
+console.log(summary.credit.score);          // SACRS credit score
+console.log(summary.dual.overall);          // Dual-score
+console.log(summary.stake?.amountSOL);      // Staking info
+```
+
+## Batch Stake Queries (v0.12.0)
+
+```typescript
+const stakes = await client.getStakeInfos([walletA, walletB, walletC]);
+const staked = stakes.filter(s => s.amountSOL > 0);
+```
+
 ## CLI
 
 ```bash
@@ -576,6 +631,14 @@ said emergency-unstake --keypair ./key.json         # Instant (10% penalty)
 | `getCreditScores(wallets[])` | Batch credit scoring for multiple agents |
 | `assessMultiple(wallets[], policy)` | Batch policy assessment |
 
+### Dual-Score & Summary (v0.12.0)
+
+| Method | Description |
+|--------|-------------|
+| `getDualScore(wallet)` | Provider/Consumer dual trust assessment |
+| `getTrustSummary(wallet)` | One-call overview (score + risk + credit + dual + stake) |
+| `getStakeInfos(wallets[])` | Batch stake info query |
+
 ## Trust Score Dimensions
 
 SAID uses a multi-dimensional scoring system (0-100):
@@ -607,6 +670,15 @@ SAID uses a multi-dimensional scoring system (0-100):
 MIT
 
 ## Changelog
+
+### v0.12.0
+- **New:** `getDualScore(wallet)` — Provider/Consumer dual trust assessment. Separates 'will this agent deliver?' from 'will this agent pay?'. Inspired by AgentKarma's best innovation (their dual-score model), enhanced with SAID's staking/slashing as economic enforcement signals.
+- **New:** `getTrustSummary(wallet)` — One-call comprehensive overview combining trust score, risk assessment, credit score, stake info, and dual-score. Ideal for dashboards and profiles.
+- **New:** `getStakeInfos(wallets[])` — Batch stake info query for efficient multi-agent lookups.
+- **New:** CLI `summary` command — formatted one-shot trust overview.
+- **New:** `DualScore`, `ProviderTrust`, `ConsumerTrust`, `TrustSummary` TypeScript types.
+- **Improved:** 200 tests passing (161 ESM + 39 CJS), all green.
+- **Docs:** New README sections for Dual-Score Model, Trust Summary, and Batch Stake Queries.
 
 ### v0.11.0
 - **SACRS Credit Score** — FICO-compatible 300-850 credit score for AI agents

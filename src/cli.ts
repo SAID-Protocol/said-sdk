@@ -917,6 +917,78 @@ async function cardCmd(args: Record<string, string>) {
   }
 }
 
+async function summaryCmd(args: Record<string, string>) {
+  if (!args.wallet) { console.error("Missing --wallet"); process.exit(1); }
+
+  const { SAIDClient } = await import("./index.js");
+  const client = new SAIDClient({ rpcUrl: args.rpc || DEFAULT_RPC, cacheTtlMs: 0 });
+
+  try {
+    const summary = await client.getTrustSummary(args.wallet);
+
+    console.log(`\n  ╔════════════════════════════════════════════╗`);
+    console.log(`  ║         SAID Trust Summary                 ║`);
+    console.log(`  ╚════════════════════════════════════════════╝\n`);
+
+    console.log(`  Agent:     ${summary.identity?.name || "Unnamed"} (${args.wallet.slice(0, 8)}...)`);
+    console.log(`  Verified:  ${summary.verified ? "✅" : "❌"}`);
+    console.log(`  Registered: ${summary.registered ? "✅" : "❌"}`);
+
+    if (summary.identity?.description) console.log(`  Bio:       ${summary.identity.description}`);
+    if (summary.identity?.twitter) console.log(`  Twitter:   @${summary.identity.twitter}`);
+
+    // Trust Score
+    console.log(`\n  ── Trust Score ──\n`);
+    if (summary.trustScore) {
+      console.log(`  Overall:   ${summary.trustScore.score}/100 (${summary.trustScore.tier})`);
+      console.log(`  Identity:  ${summary.trustScore.identity}  Activity: ${summary.trustScore.activity}`);
+      console.log(`  Economic:  ${summary.trustScore.economic}  Ecosystem: ${summary.trustScore.ecosystem}`);
+    } else {
+      console.log(`  Not yet computed.`);
+    }
+
+    // Stake
+    console.log(`\n  ── Stake & Enforcement ──\n`);
+    if (summary.stake && summary.stake.amountSOL > 0) {
+      console.log(`  Staked:    ${summary.stake.amountSOL.toFixed(4)} SOL (${summary.stake.status})`);
+      console.log(`  Slashed:   ${summary.stake.slashedCount} time(s)`);
+    } else {
+      console.log(`  No stake deposited.`);
+    }
+
+    // Risk
+    console.log(`\n  ── Risk Assessment ──\n`);
+    console.log(`  Tier:      ${summary.risk.tier.toUpperCase()}`);
+    console.log(`  Max Value: ${summary.risk.recommendedMaxValueUSDC === null ? "No limit" : `${summary.risk.recommendedMaxValueUSDC} USDC`}`);
+    console.log(`  Escrow:    ${summary.risk.recommendedEscrowPct}%`);
+
+    // Credit
+    console.log(`\n  ── SACRS Credit Score ──\n`);
+    console.log(`  Score:     ${summary.credit.score}/850 (${summary.credit.rating.replace(/-/g, ' ')})`);
+    console.log(`  Default:   ${(summary.credit.probabilityOfDefault * 100).toFixed(2)}% probability`);
+    console.log(`  LTV:       ${summary.credit.recommendedLTV}%`);
+    console.log(`  Premium:   ${summary.credit.recommendedRatePremiumBps === 0 ? "Prime" : `+${summary.credit.recommendedRatePremiumBps} bps`}`);
+
+    // Dual Score
+    console.log(`\n  ── Dual Score (Provider / Consumer) ──\n`);
+    console.log(`  Provider:  ${summary.dual.provider.score}/100 (${summary.dual.provider.confidence} confidence)`);
+    console.log(`  Consumer:  ${summary.dual.consumer.score}/100 (${summary.dual.consumer.confidence} confidence)`);
+    console.log(`  Overall:   ${summary.dual.overall}/100`);
+
+    if (summary.dual.provider.signals.length > 0) {
+      console.log(`\n  Provider signals: ${summary.dual.provider.signals.join(', ')}`);
+    }
+    if (summary.dual.consumer.signals.length > 0) {
+      console.log(`  Consumer signals: ${summary.dual.consumer.signals.join(', ')}`);
+    }
+
+    console.log(`\n  Computed: ${summary.computedAt}\n`);
+  } catch (e: any) {
+    console.error(`❌ Failed: ${e.message}`);
+    process.exit(1);
+  }
+}
+
 async function resolveCmd(args: Record<string, string>) {
   if (!args.wallet) { console.error("Missing --wallet"); process.exit(1); }
 
@@ -950,7 +1022,7 @@ async function resolveCmd(args: Record<string, string>) {
 
 // ── Main ──
 
-const CLI_VERSION = "0.10.0";
+const CLI_VERSION = "0.12.0";
 const command = process.argv[2];
 const args = parseArgs(process.argv.slice(3));
 
@@ -974,6 +1046,8 @@ switch (command) {
   case "risk": riskCmd(args); break;
   case "assess": assessCmd(args); break;
   case "credit": creditCmd(args); break;
+  // Trust Summary
+  case "summary": summaryCmd(args); break;
   // Discovery
   case "card": cardCmd(args); break;
   case "discover": discoverCmd(args); break;
@@ -1005,6 +1079,9 @@ Usage:
   said assess             --wallet <address> [options]        (policy-based allow/deny/review)
     Options: --min-score <n> --require-verified <true> --min-stake <SOL> --max-risk <tier>
   said credit            --wallet <address>                  (SACRS credit score 300-850)
+
+  ── Trust Summary ──
+  said summary           --wallet <address>                  (one-shot: score + risk + credit + dual)
 
   ── Discovery ──
   said card              --wallet <address> [--json]         (view ERC-8004 agent card)

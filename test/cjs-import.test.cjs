@@ -36,6 +36,8 @@ const methods = [
   'getRiskAssessment', 'assess', 'signReceipt', 'verifyReceipt',
   // v0.11.0 methods
   'getCreditScore', 'getCreditScores', 'assessMultiple',
+  // v0.12.0 methods
+  'getDualScore', 'getTrustSummary', 'getStakeInfos',
 ];
 
 for (const method of methods) {

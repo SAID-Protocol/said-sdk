@@ -342,6 +342,71 @@ try {
   }
 }
 
+// ── Dual Score (v0.12.0) ──
+console.log('\n  ── Dual Score Tests ──\n');
+
+{
+  const dual = await client.getDualScore(TEST_WALLET);
+  assert('getDualScore returns wallet', dual.wallet === TEST_WALLET);
+  assert('getDualScore returns scored=true for known agent', dual.scored === true);
+  assert('getDualScore returns overall score', typeof dual.overall === 'number');
+  assert('getDualScore overall 0-100', dual.overall >= 0 && dual.overall <= 100);
+
+  // Provider
+  assert('getDualScore provider.score is number', typeof dual.provider.score === 'number');
+  assert('getDualScore provider.score 0-100', dual.provider.score >= 0 && dual.provider.score <= 100);
+  assert('getDualScore provider.confidence is string', typeof dual.provider.confidence === 'string');
+  assert('getDualScore provider.signals is array', Array.isArray(dual.provider.signals));
+  assert('getDualScore provider.dataPoints > 0 for known agent', dual.provider.dataPoints > 0);
+
+  // Consumer
+  assert('getDualScore consumer.score is number', typeof dual.consumer.score === 'number');
+  assert('getDualScore consumer.score 0-100', dual.consumer.score >= 0 && dual.consumer.score <= 100);
+  assert('getDualScore consumer.confidence is string', typeof dual.consumer.confidence === 'string');
+  assert('getDualScore consumer.signals is array', Array.isArray(dual.consumer.signals));
+}
+
+// Dual score for unknown wallet
+{
+  const dual = await client.getDualScore(UNREGISTERED_WALLET);
+  assert('getDualScore unknown: scored=false', dual.scored === false);
+  assert('getDualScore unknown: overall=0', dual.overall === 0);
+  assert('getDualScore unknown: provider.score=0', dual.provider.score === 0);
+  assert('getDualScore unknown: consumer.score=0', dual.consumer.score === 0);
+  assert('getDualScore unknown: confidence=none', dual.provider.confidence === 'none');
+}
+
+// ── Trust Summary (v0.12.0) ──
+console.log('\n  ── Trust Summary Tests ──\n');
+
+{
+  const summary = await client.getTrustSummary(TEST_WALLET);
+  assert('getTrustSummary returns wallet', summary.wallet === TEST_WALLET);
+  assert('getTrustSummary returns registered', typeof summary.registered === 'boolean');
+  assert('getTrustSummary returns verified', typeof summary.verified === 'boolean');
+  assert('getTrustSummary returns identity', !!summary.identity);
+  assert('getTrustSummary returns trustScore', !!summary.trustScore);
+  assert('getTrustSummary returns stake', !!summary.stake);
+  assert('getTrustSummary returns risk', !!summary.risk);
+  assert('getTrustSummary returns credit', !!summary.credit);
+  assert('getTrustSummary returns dual', !!summary.dual);
+  assert('getTrustSummary returns computedAt', typeof summary.computedAt === 'string');
+  assert('getTrustSummary risk.tier is string', typeof summary.risk.tier === 'string');
+  assert('getTrustSummary credit.score is number', typeof summary.credit.score === 'number');
+  assert('getTrustSummary dual.overall is number', typeof summary.dual.overall === 'number');
+}
+
+// ── Batch Stake Queries (v0.12.0) ──
+console.log('\n  ── Batch Stake Tests ──\n');
+
+{
+  const stakes = await client.getStakeInfos([TEST_WALLET, UNREGISTERED_WALLET]);
+  assert('getStakeInfos returns 2 results', stakes.length === 2);
+  assert('getStakeInfos first has amountSOL', typeof stakes[0].amountSOL === 'number');
+  assert('getStakeInfos second has amountSOL', typeof stakes[1].amountSOL === 'number');
+  assert('getStakeInfos first has status', typeof stakes[0].status === 'string');
+}
+
 // ── Summary ──
 console.log(`\n  Results: ${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

@@ -1,5 +1,5 @@
 /**
- * SAID Protocol Client SDK v0.10.0
+ * SAID Protocol Client SDK v0.12.0
  * Agent identity, reputation, enforcement, and cross-chain messaging on Solana
  *
  * @example
@@ -284,6 +284,97 @@ export interface SACRSResult {
   /** Whether sufficient data exists for reliable scoring */
   scored: boolean;
   /** Timestamp of score computation */
+  computedAt: string;
+}
+
+// ── Dual-Score Model (v0.12.0) ─────────────────────────────────────────────
+// Inspired by AgentKarma's dual-score innovation (Provider Karma + Consumer Karma).
+// AgentKarma died but this pattern was their best idea — separates
+// 'Will this agent deliver?' (provider) from 'Will this agent pay?' (consumer).
+// SAID enhances with staking/slashing as economic enforcement signal.
+
+/**
+ * Provider trust assessment — 'Can I trust this agent to DO work?'
+ * Based on: reputation score, feedback from those who hired them,
+ * verification status, stake at risk.
+ */
+export interface ProviderTrust {
+  /** Trust score for delivering work (0-100) */
+  score: number;
+  /** Confidence level in the score */
+  confidence: 'high' | 'medium' | 'low' | 'none';
+  /** Number of data points feeding this score */
+  dataPoints: number;
+  /** Key signals */
+  signals: string[];
+}
+
+/**
+ * Consumer trust assessment — 'Can I trust this agent to PAY?'
+ * Based on: stake amount (skin in the game), slashing history,
+ * payment track record, economic security.
+ */
+export interface ConsumerTrust {
+  /** Trust score for paying reliably (0-100) */
+  score: number;
+  /** Confidence level in the score */
+  confidence: 'high' | 'medium' | 'low' | 'none';
+  /** Number of data points feeding this score */
+  dataPoints: number;
+  /** Key signals */
+  signals: string[];
+}
+
+/**
+ * Dual-score result combining provider + consumer trust.
+ *
+ * AgentKarma's key insight: an agent can be great at delivering work
+ * but terrible at paying, or vice versa. A single score conflates these.
+ *
+ * SAID enhancement: staking/slashing data gives economic accountability
+ * signal that pure feedback systems lack.
+ */
+export interface DualScore {
+  /** The wallet that was scored */
+  wallet: string;
+  /** Provider trust — 'Will this agent deliver?' */
+  provider: ProviderTrust;
+  /** Consumer trust — 'Will this agent pay?' */
+  consumer: ConsumerTrust;
+  /** Overall blended score (0-100) */
+  overall: number;
+  /** Whether sufficient data exists */
+  scored: boolean;
+  /** Timestamp */
+  computedAt: string;
+}
+
+// ── Trust Summary Types (v0.12.0) ──────────────────────────────────────────
+
+/**
+ * One-call trust overview combining all SAID signals.
+ * Returns trust score, risk assessment, credit score, stake info,
+ * and dual-score in a single response — ideal for dashboards/profiles.
+ */
+export interface TrustSummary {
+  wallet: string;
+  /** Agent registration status */
+  registered: boolean;
+  /** Verification status */
+  verified: boolean;
+  /** Agent identity */
+  identity: AgentIdentity | null;
+  /** Trust score breakdown */
+  trustScore: TrustScoreBreakdown | null;
+  /** Stake info */
+  stake: StakeInfo | null;
+  /** Risk assessment */
+  risk: RiskAssessment;
+  /** SACRS credit score */
+  credit: SACRSResult;
+  /** Dual-score (provider + consumer) */
+  dual: DualScore;
+  /** Summary timestamp */
   computedAt: string;
 }
 
@@ -1385,6 +1476,110 @@ export class SAIDClient {
   }
 
 
+  // ── Dual-Score (v0.12.0) ────────────────────────────────────────────────
+
+  /**
+   * Get a dual-score assessment separating provider trust from consumer trust.
+   *
+   * Inspired by AgentKarma's Provider/Consumer Karma split (their best idea
+   * before they died). Enhanced with SAID's staking/slashing signals.
+   *
+   * - Provider score answers: 'Will this agent deliver quality work?'
+   * - Consumer score answers: 'Will this agent pay reliably?'
+   *
+   * An agent can be excellent at delivering but unreliable at paying
+   * (or vice versa). A single score conflates these dimensions.
+   *
+   * @example
+   * ```ts
+   * const dual = await client.getDualScore('WALLET');
+   * console.log(`Provider: ${dual.provider.score}/100`);
+   * console.log(`Consumer: ${dual.consumer.score}/100`);
+   * if (dual.consumer.score < 30) requireUpfrontPayment();
+   * ```
+   */
+  async getDualScore(wallet: string): Promise<DualScore> {
+    const [agent, stake] = await Promise.all([
+      this.getAgent(wallet),
+      this.getStakeInfo(wallet),
+    ]);
+
+    return computeDualScore(agent, stake);
+  }
+
+  /**
+   * Get a comprehensive trust summary in a single call.
+   *
+   * Combines: agent verification, trust score, stake info, risk assessment,
+   * SACRS credit score, and dual-score. Ideal for dashboards, profiles,
+   * and one-shot lookups.
+   *
+   * @example
+   * ```ts
+   * const summary = await client.getTrustSummary('WALLET');
+   * console.log(`Score: ${summary.trustScore?.score}`);
+   * console.log(`Risk: ${summary.risk.tier}`);
+   * console.log(`Credit: ${summary.credit.score}/850`);
+   * console.log(`Provider: ${summary.dual.provider.score}, Consumer: ${summary.dual.consumer.score}`);
+   * ```
+   */
+  async getTrustSummary(wallet: string): Promise<TrustSummary> {
+    const [agent, stake] = await Promise.all([
+      this.getAgent(wallet),
+      this.getStakeInfo(wallet),
+    ]);
+
+    const risk = await this.getRiskAssessment(wallet);
+    const credit = computeSACRS(agent, stake);
+    const dual = computeDualScore(agent, stake);
+
+    return {
+      wallet,
+      registered: agent.registered,
+      verified: agent.verified,
+      identity: agent.identity ?? null,
+      trustScore: agent.trustScore ?? null,
+      stake,
+      risk,
+      credit,
+      dual,
+      computedAt: new Date().toISOString(),
+    };
+  }
+
+  // ── Batch Stake Queries (v0.12.0) ─────────────────────────────────────
+
+  /**
+   * Get staking info for multiple agents in a single call.
+   * More efficient than calling getStakeInfo() in a loop.
+   *
+   * @example
+   * ```ts
+   * const stakes = await client.getStakeInfos([walletA, walletB, walletC]);
+   * const staked = stakes.filter(s => s.amountSOL > 0);
+   * ```
+   */
+  async getStakeInfos(wallets: string[]): Promise<StakeInfo[]> {
+    return Promise.allSettled(
+      wallets.map((w) => this.getStakeInfo(w)),
+    ).then((results) =>
+      results.map((r, i) =>
+        r.status === 'fulfilled'
+          ? r.value
+          : {
+              agent: wallets[i],
+              stakePDA: '',
+              amountLamports: 0,
+              amountSOL: 0,
+              status: 'none' as const,
+              requestedAt: null,
+              cooldownEndsAt: null,
+              slashedCount: 0,
+            },
+      ),
+    );
+  }
+
   // ── Messaging ──────────────────────────────────────────────────────────
 
   /**
@@ -1731,6 +1926,160 @@ function computeSACRS(
     recommendedLTV,
     recommendedRatePremiumBps,
     summary,
+    scored: true,
+    computedAt: new Date(now).toISOString(),
+  };
+}
+
+// ── Dual-Score Computation Engine (v0.12.0) ───────────────────────────────
+//
+// Inspired by AgentKarma's Provider Karma + Consumer Karma split.
+// AgentKarma died ($0 revenue, archived June 2026) but their dual-score
+// model was genuinely innovative. We steal the best ideas.
+//
+// Provider Trust: 'Will this agent DELIVER quality work?'
+//   - Based on reputation scores, feedback from those who hired them,
+//     verification status, and time registered.
+//
+// Consumer Trust: 'Will this agent PAY reliably?'
+//   - Based on staking (skin in the game), slashing history,
+//     and economic security signals unique to SAID.
+
+function computeDualScore(
+  agent: AgentVerification,
+  stake: StakeInfo,
+): DualScore {
+  const now = Date.now();
+
+  if (!agent.registered) {
+    return {
+      wallet: agent.wallet,
+      provider: { score: 0, confidence: 'none', dataPoints: 0, signals: ['Not registered'] },
+      consumer: { score: 0, confidence: 'none', dataPoints: 0, signals: ['Not registered'] },
+      overall: 0,
+      scored: false,
+      computedAt: new Date(now).toISOString(),
+    };
+  }
+
+  const score = agent.trustScore?.score ?? null;
+  const feedbackCount = agent.reputation?.feedbackCount ?? 0;
+  const verified = agent.verified;
+  const stakeSOL = stake.amountSOL;
+  const slashedCount = stake.slashedCount;
+
+  // ── Provider Trust Score ──
+  // 'Will this agent deliver quality work?'
+  // Weighted toward feedback, reputation score, and verification.
+  const providerSignals: string[] = [];
+  let providerRaw = 0;
+  let providerDataPoints = 0;
+
+  // Verification contributes 25 points max
+  if (verified) {
+    providerRaw += 25;
+    providerSignals.push('SAID-verified');
+  }
+  providerDataPoints += 1;
+
+  // Trust score contributes 40 points max (scaled from 0-100)
+  if (score !== null) {
+    providerRaw += (score / 100) * 40;
+    providerDataPoints += 1;
+    if (score >= 70) providerSignals.push(`High reputation (${score}/100)`);
+    else if (score < 30) providerSignals.push(`Low reputation (${score}/100)`);
+  }
+
+  // Feedback count contributes 20 points max (log scale)
+  if (feedbackCount > 0) {
+    const feedbackScore = Math.min(20, Math.log2(feedbackCount + 1) * 4);
+    providerRaw += feedbackScore;
+    providerDataPoints += 1;
+    providerSignals.push(`${feedbackCount} feedback entries`);
+  }
+
+  // Registration age contributes 15 points max
+  if (agent.registeredAt) {
+    const ageDays = (now - new Date(agent.registeredAt).getTime()) / (1000 * 60 * 60 * 24);
+    providerRaw += Math.min(15, ageDays / 20); // 300 days = 15 points
+    providerDataPoints += 1;
+    if (ageDays > 90) providerSignals.push(`Established (${Math.round(ageDays)}d)`);
+  }
+
+  const providerScore = Math.round(Math.min(100, providerRaw));
+  const providerConfidence =
+    providerDataPoints >= 4 ? 'high' :
+    providerDataPoints >= 3 ? 'medium' :
+    providerDataPoints >= 1 ? 'low' : 'none';
+
+  // ── Consumer Trust Score ──
+  // 'Will this agent pay reliably?'
+  // Weighted toward staking, slashing history, and economic security.
+  // This is SAID's unique advantage — no competitor has these signals.
+  const consumerSignals: string[] = [];
+  let consumerRaw = 0;
+  let consumerDataPoints = 0;
+
+  // Staking contributes up to 50 points (skin in the game)
+  if (stakeSOL > 0 && (stake.status === 'active' || stake.status === 'none')) {
+    const stakeScore = Math.min(50, stakeSOL * 10);
+    consumerRaw += stakeScore;
+    consumerDataPoints += 1;
+    consumerSignals.push(`${stakeSOL.toFixed(2)} SOL staked`);
+  } else {
+    consumerSignals.push('No stake deposited');
+  }
+
+  // Clean slashing record contributes 25 points
+  if (slashedCount === 0) {
+    consumerRaw += 25;
+    consumerDataPoints += 1;
+    if (stakeSOL > 0) consumerSignals.push('No slashing history');
+  } else {
+    // Each slash removes 12 points
+    consumerRaw -= Math.min(50, slashedCount * 12);
+    consumerSignals.push(`${slashedCount} slash event(s)`);
+  }
+  consumerDataPoints += 1;
+
+  // Verification contributes 15 points (verified agents are more accountable)
+  if (verified) {
+    consumerRaw += 15;
+    consumerDataPoints += 1;
+  }
+
+  // Reputation score contributes 10 points (agents that deliver tend to pay)
+  if (score !== null && score > 50) {
+    consumerRaw += Math.min(10, (score - 50) / 5);
+    consumerDataPoints += 1;
+  }
+
+  const consumerScore = Math.round(Math.max(0, Math.min(100, consumerRaw)));
+  const consumerConfidence =
+    consumerDataPoints >= 4 ? 'high' :
+    consumerDataPoints >= 3 ? 'medium' :
+    consumerDataPoints >= 1 ? 'low' : 'none';
+
+  // ── Overall ──
+  // Weighted blend: provider 45%, consumer 55%
+  // Consumer weighted higher because economic enforcement is SAID's moat
+  const overall = Math.round(providerScore * 0.45 + consumerScore * 0.55);
+
+  return {
+    wallet: agent.wallet,
+    provider: {
+      score: providerScore,
+      confidence: providerConfidence,
+      dataPoints: providerDataPoints,
+      signals: providerSignals,
+    },
+    consumer: {
+      score: consumerScore,
+      confidence: consumerConfidence,
+      dataPoints: consumerDataPoints,
+      signals: consumerSignals,
+    },
+    overall,
     scored: true,
     computedAt: new Date(now).toISOString(),
   };
