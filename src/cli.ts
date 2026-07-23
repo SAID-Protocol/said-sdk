@@ -1022,7 +1022,7 @@ async function resolveCmd(args: Record<string, string>) {
 
 // ── Main ──
 
-const CLI_VERSION = "0.12.0";
+const CLI_VERSION = "0.13.0";
 const command = process.argv[2];
 const args = parseArgs(process.argv.slice(3));
 

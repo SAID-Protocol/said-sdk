@@ -407,6 +407,102 @@ console.log('\n  ── Batch Stake Tests ──\n');
   assert('getStakeInfos first has status', typeof stakes[0].status === 'string');
 }
 
+// ── ERC-8004 Agent Card Builder (v0.13.0) ──
+console.log('\n  ── Agent Card Builder Tests ──\n');
+
+{
+  const { buildAgentCard, validateAgentCard, serveAgentCard, tierToBadge, diffAgentCards } =
+    await import('../dist/agent-card.js');
+
+  // Build a card from SAID data
+  const card = await buildAgentCard(client, {
+    wallet: TEST_WALLET,
+    description: 'Test agent for SDK validation',
+    capabilities: [
+      'code-review',
+      { name: 'audit', description: 'Security audits' },
+    ],
+    endpoints: {
+      mcp: 'https://example.com/mcp',
+      a2a: 'https://example.com/a2a',
+    },
+  });
+
+  assert('buildAgentCard returns @context', !!card['@context']);
+  assert('buildAgentCard returns @type', !!card['@type']);
+  assert('buildAgentCard returns @id', !!card['@id']);
+  assert('buildAgentCard @id contains wallet', card['@id'].includes(TEST_WALLET.slice(0, 8)) || card['@id'].includes(TEST_WALLET));
+  assert('buildAgentCard returns name', typeof card.name === 'string');
+  assert('buildAgentCard returns description', card.description === 'Test agent for SDK validation');
+  assert('buildAgentCard returns capabilities array', Array.isArray(card.capabilities));
+  assert('buildAgentCard returns endpoints', !!card.endpoints);
+  assert('buildAgentCard endpoints.mcp set', card.endpoints?.mcp === 'https://example.com/mcp');
+  assert('buildAgentCard includes verified status', typeof card.verified === 'boolean');
+  assert('buildAgentCard includes chain', card.chain === 'solana');
+
+  // Validate the card
+  const validation = validateAgentCard(card);
+  assert('validateAgentCard returns valid=true', validation.valid === true);
+  assert('validateAgentCard returns errors array', Array.isArray(validation.errors));
+  assert('validateAgentCard returns warnings array', Array.isArray(validation.warnings));
+
+  // Validate an invalid card
+  const invalidCard = { name: 'Missing fields' };
+  const invalidResult = validateAgentCard(invalidCard);
+  assert('validateAgentCard catches missing required fields', invalidResult.valid === false);
+  assert('validateAgentCard reports missing @context', invalidResult.errors.some(e => e.includes('@context')));
+
+  // serveAgentCard returns a Response
+  const response = serveAgentCard(card);
+  assert('serveAgentCard returns Response', response instanceof Response);
+  assert('serveAgentCard content-type is ld+json', response.headers.get('content-type') === 'application/ld+json');
+  assert('serveAgentCard has CORS header', response.headers.get('access-control-allow-origin') === '*');
+
+  // tierToBadge
+  const badge = tierToBadge('Gold');
+  assert('tierToBadge returns said:gold', badge === 'said:gold');
+  const badge2 = tierToBadge('Diamond');
+  assert('tierToBadge returns said:diamond', badge2 === 'said:diamond');
+
+  // diffAgentCards
+  const card2 = { ...card, name: 'Changed Name' };
+  const diff = diffAgentCards(card, card2);
+  assert('diffAgentCards detects name change', diff.includes('name'));
+  assert('diffAgentCards returns array', Array.isArray(diff));
+}
+
+// ── Policy Presets (v0.13.0) ──
+console.log('\n  ── Policy Presets Tests ──\n');
+
+{
+  const mod = await import('../dist/index.js');
+  const { POLICY_STRICT, POLICY_BALANCED, POLICY_PERMISSIVE, POLICY_X402, POLICY_DEFI, POLICIES } = mod;
+
+  assert('POLICY_STRICT has minScore', typeof POLICY_STRICT.minScore === 'number');
+  assert('POLICY_STRICT requires verified', POLICY_STRICT.requireVerified === true);
+  assert('POLICY_STRICT has minStakeSOL', typeof POLICY_STRICT.minStakeSOL === 'number');
+
+  assert('POLICY_BALANCED has minScore', typeof POLICY_BALANCED.minScore === 'number');
+  assert('POLICY_BALANCED requires verified', POLICY_BALANCED.requireVerified === true);
+
+  assert('POLICY_PERMISSIVE has maxRiskTier', typeof POLICY_PERMISSIVE.maxRiskTier === 'string');
+
+  assert('POLICY_X402 has minScore', typeof POLICY_X402.minScore === 'number');
+  assert('POLICY_DEFI requires active stake', POLICY_DEFI.requireActiveStake === true);
+  assert('POLICY_DEFI has highest minStakeSOL', POLICY_DEFI.minStakeSOL >= POLICY_STRICT.minStakeSOL);
+
+  assert('POLICIES has 5 presets', Object.keys(POLICIES).length === 5);
+  assert('POLICIES.strict equals POLICY_STRICT', POLICIES.strict === POLICY_STRICT);
+  assert('POLICIES.x402 equals POLICY_X402', POLICIES.x402 === POLICY_X402);
+
+  // Verify presets work with assess()
+  const result = await client.assess(TEST_WALLET, POLICY_PERMISSIVE);
+  assert('assess with PERMISSIVE policy returns decision', typeof result.decision === 'string');
+
+  const strictResult = await client.assess(UNREGISTERED_WALLET, POLICY_STRICT);
+  assert('assess with STRICT policy denies unknown wallet', strictResult.decision === 'deny');
+}
+
 // ── Summary ──
 console.log(`\n  Results: ${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

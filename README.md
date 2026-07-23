@@ -2,7 +2,7 @@
 
 Official SDK for [SAID Protocol](https://saidprotocol.com) — agent identity, trust scoring, and cross-chain messaging on Solana.
 
-> **v0.12.0** — Now ships Dual-Score Model (Provider + Consumer trust, inspired by AgentKarma's best idea), Trust Summary (one-call comprehensive overview), and batch stake queries. The only credit score with staking/slashing enforcement signals.
+> **v0.13.0** — ERC-8004 Agent Card Builder (generate spec-compliant cards for cross-protocol interop), Policy Presets (strict, balanced, permissive, x402, defi), and card serving helpers. Now with 198 tests passing.
 
 ## What is SAID?
 
@@ -665,13 +665,94 @@ SAID uses a multi-dimensional scoring system (0-100):
 
 **Payments (x402):** Solana, Base, Polygon, Avalanche, Sei
 
+## ERC-8004 Agent Card Builder (v0.13.0)
+
+The SDK now includes a full ERC-8004 agent card **generator** — previously you could only fetch cards. Generate spec-compliant JSON-LD cards from SAID registration data for cross-protocol interoperability with AstraSync, AgentKarma, Tiny.Place, and any ERC-8004 consumer.
+
+```typescript
+import { SAIDClient } from '@said-protocol/client';
+import { buildAgentCard, validateAgentCard, serveAgentCard } from '@said-protocol/client/agent-card';
+
+const client = new SAIDClient();
+
+// Build a card from SAID data + your overrides
+const card = await buildAgentCard(client, {
+  wallet: 'AGENT_WALLET',
+  description: 'Autonomous code reviewer for Solana programs',
+  capabilities: [
+    'code-review',
+    { name: 'audit', description: 'Security audits', endpoint: 'https://audit.agent.com' },
+  ],
+  endpoints: {
+    mcp: 'https://agent.com/mcp',
+    a2a: 'https://agent.com/a2a',
+  },
+  includeStake: true, // Include SAID staking data (extra RPC call)
+});
+
+// Validate before publishing
+const result = validateAgentCard(card);
+if (!result.valid) console.error('Invalid:', result.errors);
+
+// Serve from Cloudflare Workers / Deno / any Fetch runtime
+// at /.well-known/agent.json
+const response = serveAgentCard(card);
+```
+
+### Agent Card Functions
+
+| Function | Description |
+|----------|-------------|
+| `buildAgentCard(client, options)` | Generate ERC-8004 card from SAID data |
+| `validateAgentCard(card)` | Validate spec compliance (returns errors + warnings) |
+| `serveAgentCard(card)` | Create a Fetch Response for `/.well-known/agent.json` |
+| `tierToBadge(tier)` | Convert SAID tier to ERC-8004 badge string |
+| `diffAgentCards(old, new)` | Find changed fields between two card versions |
+
+## Policy Presets (v0.13.0)
+
+Pre-configured trust policies for common use cases. Every major payment platform (Binance, Ledger, MetaMask) is building STATIC agent spend limits. SAID policies are DYNAMIC — they adapt based on on-chain reputation.
+
+```typescript
+import { SAIDClient, POLICY_X402, POLICY_DEFI, POLICIES } from '@said-protocol/client';
+
+const client = new SAIDClient();
+
+// Use a preset directly
+const result = await client.assess('AGENT_WALLET', POLICY_X402);
+if (result.decision === 'allow') {
+  // Process payment
+}
+
+// Or select by name (great for API endpoints)
+const policy = POLICIES[req.query.policy || 'balanced'];
+const assessment = await client.assess(wallet, policy);
+```
+
+| Preset | minScore | requireVerified | minStakeSOL | maxRiskTier | Use case |
+|--------|----------|-----------------|-------------|-------------|----------|
+| `POLICY_STRICT` | 70 | ✅ | 0.5 SOL | low | High-value tx, enterprise |
+| `POLICY_BALANCED` | 50 | ✅ | — | moderate | B2B marketplaces |
+| `POLICY_PERMISSIVE` | — | — | — | elevated | Social, discovery |
+| `POLICY_X402` | 40 | — | — | moderate | x402 payment flows |
+| `POLICY_DEFI` | 60 | ✅ | 1.0 SOL | low | Lending, escrow |
+
 ## License
 
 MIT
 
 ## Changelog
 
-### v0.12.0
+### v0.13.0
+- **New:** `buildAgentCard(client, options)` — ERC-8004 compliant agent card generator. Pulls SAID registration data (name, verification, trust score, stake) and merges with developer-provided capabilities, endpoints, and metadata. Produces spec-compliant JSON-LD cards consumable by AstraSync, AgentKarma, Tiny.Place, and any ERC-8004 registry.
+- **New:** `validateAgentCard(card)` — spec compliance validator with error/warning reporting. Checks required fields, valid @context/@type, URI format, capability structure, endpoint URLs.
+- **New:** `serveAgentCard(card)` — generates a Fetch Response with correct `application/ld+json` content-type and CORS headers for serving at `/.well-known/agent.json`.
+- **New:** `tierToBadge(tier)` — converts SAID trust tiers to ERC-8004 badge strings (e.g., 'Gold' → 'said:gold').
+- **New:** `diffAgentCards(old, new)` — detects changed fields between card versions for smart re-publishing.
+- **New:** Policy Presets — 5 pre-configured trust policies (`POLICY_STRICT`, `POLICY_BALANCED`, `POLICY_PERMISSIVE`, `POLICY_X402`, `POLICY_DEFI`) addressable via `POLICIES` map. Based on research showing every major payment platform needs agent spend limits.
+- **New:** `./agent-card` subpath export for importing card builder independently.
+- **Improved:** 198 tests passing (161 ESM + 37 new card/policy tests), all green.
+- **Docs:** New README sections for Agent Card Builder and Policy Presets with code examples and comparison tables.
 - **New:** `getDualScore(wallet)` — Provider/Consumer dual trust assessment. Separates 'will this agent deliver?' from 'will this agent pay?'. Inspired by AgentKarma's best innovation (their dual-score model), enhanced with SAID's staking/slashing as economic enforcement signals.
 - **New:** `getTrustSummary(wallet)` — One-call comprehensive overview combining trust score, risk assessment, credit score, stake info, and dual-score. Ideal for dashboards and profiles.
 - **New:** `getStakeInfos(wallets[])` — Batch stake info query for efficient multi-agent lookups.

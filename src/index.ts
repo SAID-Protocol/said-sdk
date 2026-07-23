@@ -1,5 +1,5 @@
 /**
- * SAID Protocol Client SDK v0.12.0
+ * SAID Protocol Client SDK v0.13.0
  * Agent identity, reputation, enforcement, and cross-chain messaging on Solana
  *
  * @example
@@ -2099,6 +2099,78 @@ export class SAIDError extends Error {
   }
 }
 
+// ── Policy Presets (v0.13.0) ──────────────────────────────────────────────
+//
+// Pre-configured TrustPolicy objects for common use cases.
+// Research shows every major payment platform (Binance, Ledger, MetaMask)
+// is building spend limits for agents — but STATIC. SAID's DYNAMIC presets
+// adapt based on on-chain reputation, which is the unique advantage.
+
+/**
+ * Strict policy: only verified, high-score, staked agents.
+ * Use for: high-value transactions, enterprise integrations, DeFi protocols.
+ */
+export const POLICY_STRICT: TrustPolicy = {
+  minScore: 70,
+  requireVerified: true,
+  minStakeSOL: 0.5,
+  requireActiveStake: true,
+  maxRiskTier: 'low',
+};
+
+/**
+ * Balanced policy: verified agents with decent scores.
+ * Use for: B2B marketplaces, paid API calls, premium agent services.
+ */
+export const POLICY_BALANCED: TrustPolicy = {
+  minScore: 50,
+  requireVerified: true,
+  maxRiskTier: 'moderate',
+};
+
+/**
+ * Permissive policy: any registered agent, no minimum score.
+ * Use for: social platforms, discovery, low-value transactions.
+ */
+export const POLICY_PERMISSIVE: TrustPolicy = {
+  maxRiskTier: 'elevated',
+};
+
+/**
+ * x402 payment policy: designed for x402 payment flows.
+ * Requires registration + decent score, blocks high-risk agents.
+ * Optimized for payment trust — the killer use case per research.
+ */
+export const POLICY_X402: TrustPolicy = {
+  minScore: 40,
+  requireVerified: false,
+  maxRiskTier: 'moderate',
+};
+
+/**
+ * DeFi protocol policy: for lending/borrowing/escrow.
+ * Strictest stake requirements — skin in the game is mandatory.
+ */
+export const POLICY_DEFI: TrustPolicy = {
+  minScore: 60,
+  requireVerified: true,
+  minStakeSOL: 1.0,
+  requireActiveStake: true,
+  maxRiskTier: 'low',
+};
+
+/**
+ * All available policy presets keyed by name.
+ * Use for runtime policy selection: `const policy = POLICIES[req.query.policy]`;
+ */
+export const POLICIES: Record<string, TrustPolicy> = {
+  strict: POLICY_STRICT,
+  balanced: POLICY_BALANCED,
+  permissive: POLICY_PERMISSIVE,
+  x402: POLICY_X402,
+  defi: POLICY_DEFI,
+};
+
 // ── Trust Middleware (re-exported) ─────────────────────────────────────────
 
 export {
@@ -2113,6 +2185,21 @@ export type {
   TrustMiddlewareFn,
   MiddlewareMode,
 } from './middleware.js';
+
+// ── Agent Card Builder (re-exported) ─────────────────────────────────────────
+
+export {
+  buildAgentCard,
+  validateAgentCard,
+  serveAgentCard,
+  tierToBadge,
+  diffAgentCards,
+} from './agent-card.js';
+
+export type {
+  BuildAgentCardOptions,
+  ValidationResult as CardValidationResult,
+} from './agent-card.js';
 
 // ── Webhook Signature Verification Helper ──────────────────────────────────
 
