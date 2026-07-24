@@ -6,6 +6,7 @@ export default defineConfig({
     cli: 'src/cli.ts',
     middleware: 'src/middleware.ts',
     'agent-card': 'src/agent-card.ts',
+    'acp': 'src/acp.ts',
   },
   format: ['cjs', 'esm'],
   dts: true,

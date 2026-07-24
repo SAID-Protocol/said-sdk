@@ -1,6 +1,6 @@
 {
   "name": "@said-protocol/client",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "SAID Protocol SDK — agent identity, trust scoring, enforcement, and cross-chain messaging on Solana",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -28,6 +28,12 @@
       "require": "./dist/agent-card.cjs",
       "default": "./dist/agent-card.js"
     },
+    "./acp": {
+      "types": "./dist/acp.d.ts",
+      "import": "./dist/acp.js",
+      "require": "./dist/acp.cjs",
+      "default": "./dist/acp.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -40,7 +46,7 @@
     "build": "tsup",
     "test": "node test/integration.mjs",
     "test:cjs": "node test/cjs-import.test.cjs",
-    "test:all": "npm run build && npm run test && npm run test:cjs",
+    "test:all": "npm run build && npm run test && npm run test:cjs && node test/acp.test.mjs",
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit"
   },
@@ -52,6 +58,9 @@
     "solana",
     "a2a",
     "erc-8004",
+    "erc-8183",
+    "acp",
+    "agent-commerce",
     "trust-score",
     "agent-identity",
     "kya",
