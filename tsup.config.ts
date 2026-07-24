@@ -7,6 +7,7 @@ export default defineConfig({
     middleware: 'src/middleware.ts',
     'agent-card': 'src/agent-card.ts',
     'acp': 'src/acp.ts',
+    'x402': 'src/x402.ts',
   },
   format: ['cjs', 'esm'],
   dts: true,

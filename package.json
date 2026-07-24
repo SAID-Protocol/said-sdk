@@ -1,6 +1,6 @@
 {
   "name": "@said-protocol/client",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "SAID Protocol SDK — agent identity, trust scoring, enforcement, and cross-chain messaging on Solana",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -34,6 +34,12 @@
       "require": "./dist/acp.cjs",
       "default": "./dist/acp.js"
     },
+    "./x402": {
+      "types": "./dist/x402.d.ts",
+      "import": "./dist/x402.js",
+      "require": "./dist/x402.cjs",
+      "default": "./dist/x402.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -46,7 +52,7 @@
     "build": "tsup",
     "test": "node test/integration.mjs",
     "test:cjs": "node test/cjs-import.test.cjs",
-    "test:all": "npm run build && npm run test && npm run test:cjs && node test/acp.test.mjs",
+    "test:all": "npm run build && npm run test && npm run test:cjs && node test/acp.test.mjs && node test/x402.test.mjs",
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit"
   },
@@ -60,6 +66,7 @@
     "erc-8004",
     "erc-8183",
     "acp",
+    "x402",
     "agent-commerce",
     "trust-score",
     "agent-identity",

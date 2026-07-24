@@ -2179,6 +2179,20 @@ export {
   honoAdapter,
 } from './middleware.js';
 
+// ── x402 Trust Facilitator (re-exported) ───────────────────────────────────
+
+export {
+  X402TrustFacilitator,
+  parseTrustHeaders,
+  defaultPayeeExtractor,
+} from './x402.js';
+
+export type {
+  X402FacilitatorConfig,
+  X402TrustResult,
+  WalletExtractor,
+} from './x402.js';
+
 export type {
   TrustMiddlewareOptions,
   TrustCheckResult,

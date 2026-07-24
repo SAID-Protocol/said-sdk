@@ -2,7 +2,7 @@
 
 Official SDK for [SAID Protocol](https://saidprotocol.com) — agent identity, trust scoring, and cross-chain messaging on Solana.
 
-> **v0.13.0** — ERC-8004 Agent Card Builder (generate spec-compliant cards for cross-protocol interop), Policy Presets (strict, balanced, permissive, x402, defi), and card serving helpers. Now with 198 tests passing.
+> **v0.15.0** — x402 Payment Trust Facilitator: intercept 402 responses, check SAID trust before payment settles, two-sided trust enforcement, provider selection. 317 tests passing.
 
 ## What is SAID?
 
@@ -737,11 +737,138 @@ const assessment = await client.assess(wallet, policy);
 | `POLICY_X402` | 40 | — | — | moderate | x402 payment flows |
 | `POLICY_DEFI` | 60 | ✅ | 1.0 SOL | low | Lending, escrow |
 
+## x402 Payment Trust Facilitator (v0.15.0)
+
+The x402 facilitator is the critical bridge between SAID trust infrastructure and the x402 payment standard. It intercepts HTTP 402 (Payment Required) responses and checks trust BEFORE payment settles — protecting agents from paying untrusted endpoints, and protecting endpoints from serving untrusted agents.
+
+### Import
+
+```typescript
+import { SAIDClient } from '@said-protocol/client';
+import { X402TrustFacilitator } from '@said-protocol/client/x402';
+
+const said = new SAIDClient();
+const facilitator = new X402TrustFacilitator(said);
+```
+
+### Protect Agents from Untrusted Endpoints
+
+Wrap `fetch` to automatically trust-check any 402 response before payment:
+
+```typescript
+const safeFetch = facilitator.wrapFetch(fetch);
+
+// If endpoint returns 402, SAID checks the payee's trust score
+// If untrusted → 402 converted to 403 (payment blocked)
+// If trusted → 402 passes through, payment proceeds
+const res = await safeFetch('https://api.example.com/paid-endpoint');
+
+if (res.headers.get('x-said-blocked') === 'true') {
+  console.log('Payment blocked — untrusted endpoint');
+}
+```
+
+### Manual Payment Check
+
+Check trust before processing a 402 response yourself:
+
+```typescript
+if (res.status === 402) {
+  const trust = await facilitator.checkPayment(res, {
+    payeeWallet: 'ENDPOINT_WALLET',
+    paymentAmountUSDC: 5.0,
+  });
+
+  if (trust.deny) {
+    console.log(`Blocked: ${trust.reason}`);
+    // Don't pay
+  } else if (trust.review) {
+    console.log(`Caution: ${trust.reason}`);
+    console.log(`Recommended escrow: ${trust.recommendedEscrowPct}%`);
+  }
+}
+```
+
+### Preflight Check
+
+Check an endpoint's trustworthiness BEFORE making any request:
+
+```typescript
+const preflight = await facilitator.preflight('https://api.example.com', {
+  payeeWallet: 'ENDPOINT_WALLET',
+  paymentAmountUSDC: 5.0,
+});
+
+if (preflight.deny) {
+  // Don't bother making the request
+}
+```
+
+### Pick Best Provider
+
+When multiple providers offer the same service, pick the most trustworthy:
+
+```typescript
+const best = await facilitator.pickBestProvider([
+  'WALLET_A', 'WALLET_B', 'WALLET_C',
+]);
+
+if (best) {
+  console.log(`Best: ${best.payeeWallet} (score: ${best.payeeRisk?.score})`);
+}
+```
+
+### Parse Trust Headers
+
+Parse SAID trust metadata from responses:
+
+```typescript
+import { parseTrustHeaders } from '@said-protocol/client/x402';
+
+const trust = parseTrustHeaders(response.headers);
+// { verdict: 'allow', payeeScore: 75, payeeTier: 'low', ... }
+```
+
+### Two-Sided Trust
+
+The facilitator supports checking both sides of a payment:
+
+- **Payee trust** (default): Is the endpoint I'm paying trustworthy?
+- **Payer trust** (optional): Is the agent paying me trustworthy?
+
+```typescript
+const result = await facilitator.checkPayment(res, {
+  payeeWallet: 'ENDPOINT_WALLET',
+  payerWallet: 'AGENT_WALLET',
+  paymentAmountUSDC: 10.0,
+});
+
+// result.checked === 'both'
+```
+
 ## License
 
 MIT
 
 ## Changelog
+
+### v0.15.0
+- **New:** `X402TrustFacilitator` — x402 payment trust enforcement module. Intercepts HTTP 402 responses and checks SAID trust BEFORE payment settles. Two-sided trust: protects agents from untrusted endpoints AND protects endpoints from untrusted agents.
+- **New:** `wrapFetch(fetchFn)` — wrap any fetch function to automatically trust-check 402 responses.
+- **New:** `checkPayment(response, options)` — manual trust check for a 402 payment challenge.
+- **New:** `preflight(endpoint, options)` — check endpoint trustworthiness BEFORE making a request.
+- **New:** `batchCheck(payments)` — batch trust check for multiple payment endpoints.
+- **New:** `pickBestProvider(wallets)` — pick the highest-scoring trusted provider from a list.
+- **New:** `parseTrustHeaders(headers)` — parse SAID trust metadata from response headers.
+- **New:** `defaultPayeeExtractor(response)` — extract payee wallet from x402 payment headers.
+- **New:** 57 tests for the x402 facilitator module (total: 317 tests).
+- **New:** `x402` subpath export (`@said-protocol/client/x402`).
+
+### v0.14.0
+- **New:** ERC-8183 Agent Commerce Protocol (ACP) support — 670-line module with trust enforcement for agent-to-agent commerce. Check trust before ACP transactions (hire, deliver, evaluate), calculate escrow % and spend caps, validate lifecycle state transitions.
+- **New:** Full ERC-8183 lifecycle state machine with valid transition validation.
+- **New:** `ACPTrustChecker` class with `evaluateTransaction`, `canHire`, `checkEnforcementAvailable` methods.
+- **New:** 62 ACP tests (total: 260 tests).
 
 ### v0.13.0
 - **New:** `buildAgentCard(client, options)` — ERC-8004 compliant agent card generator. Pulls SAID registration data (name, verification, trust score, stake) and merges with developer-provided capabilities, endpoints, and metadata. Produces spec-compliant JSON-LD cards consumable by AstraSync, AgentKarma, Tiny.Place, and any ERC-8004 registry.
