@@ -1,5 +1,5 @@
 /**
- * SAID Protocol Client SDK v0.13.0
+ * SAID Protocol Client SDK v0.16.0
  * Agent identity, reputation, enforcement, and cross-chain messaging on Solana
  *
  * @example
