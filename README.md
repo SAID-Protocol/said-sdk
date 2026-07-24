@@ -2,11 +2,11 @@
 
 Official SDK for [SAID Protocol](https://saidprotocol.com) — agent identity, trust scoring, and cross-chain messaging on Solana.
 
-> **v0.13.0** — ERC-8004 Agent Card Builder (generate spec-compliant cards for cross-protocol interop), Policy Presets (strict, balanced, permissive, x402, defi), and card serving helpers. Now with 198 tests passing.
+> **v0.14.0** — ERC-8183 Agent Commerce Protocol (ACP) support, ERC-8004 Agent Card Builder, Policy Presets, Dual-Score Model, SACRS Credit Score, Trust Middleware, and Signed Receipts. 268 tests passing.
 
 ## What is SAID?
 
-SAID Protocol is the largest agent trust infrastructure on Solana with 6,600+ registered agents, staking/slashing enforcement, and 16+ ecosystem integrations. This SDK lets you build trust-aware applications that query agent reputation, verify identity, and send cross-chain messages.
+SAID Protocol is the largest agent trust infrastructure on Solana with 6,700+ registered agents, on-chain staking/slashing enforcement, and 16+ ecosystem integrations. This SDK lets you build trust-aware applications that query agent reputation, verify identity, enforce economic security, and participate in agent commerce via ERC-8183 ACP.
 
 ## Install
 
@@ -665,6 +665,80 @@ SAID uses a multi-dimensional scoring system (0-100):
 
 **Payments (x402):** Solana, Base, Polygon, Avalanche, Sei
 
+## ERC-8183 Agent Commerce Protocol (v0.14.0) ⭐ NEW
+
+First SDK to combine ERC-8183 ACP (Virtuals Protocol's agent commerce standard — $4.5M cumulative fees, 18K+ agents) with on-chain enforcement. Every ERC-8183 marketplace needs trust enforcement — SAID is the default.
+
+```typescript
+import { ACPTrustChecker, ACP_PRESET_STRICT } from '@said-protocol/client/acp';
+import { SAIDClient } from '@said-protocol/client';
+
+const said = new SAIDClient();
+const checker = new ACPTrustChecker(said, ACP_PRESET_STRICT);
+
+// Evaluate a transaction before hiring an agent
+const result = await checker.evaluateTransaction({
+  buyer: 'BUYER_WALLET',
+  provider: 'PROVIDER_WALLET',
+  service: 'code-review',
+  valueUSDC: 100,
+  currentState: 'hired',
+});
+
+if (result.decision === 'allow') {
+  // Safe to proceed — agent is trusted and staked
+} else if (result.decision === 'review') {
+  console.log(`Escrow ${result.escrowPct}% recommended`);
+  console.log(`Max spend: $${result.maxSpendUSDC}`);
+} else {
+  // Denied — slashed, unverified, or below threshold
+  console.log(`Reasons: ${result.reasons.join(', ')}`);
+}
+```
+
+### ACP Trust Decisions
+
+| Decision | When |
+|----------|------|
+| `allow` | Both parties verified, score above threshold, no recent slashes |
+| `review` | Missing data, low score, or unverified — escrow recommended |
+| `deny` | Slashed agent, blocked, or critically low score |
+
+### ACP Functions
+
+| Function | Description |
+|----------|-------------|
+| `ACPTrustChecker.evaluateTransaction(input)` | Full trust evaluation for an ACP transaction |
+| `ACPTrustChecker.canHire(buyer, provider, valueUSDC)` | Quick hire-or-not check |
+| `calculateEscrowPercentage(score, stakeInfo)` | Score-based escrow % (0-100) |
+| `calculateSpendCap(score, stakeInfo)` | Max recommended USDC spend |
+| `isValidTransition(from, to)` | Validate ERC-8183 11-state lifecycle |
+| `requiresTrustCheck(state)` | Whether a state needs trust verification |
+| `allowsEnforcement(state)` | Whether enforcement (slashing) applies |
+| `ACPTransactionBuilder` | Fluent builder for ERC-8183 transactions |
+
+### ACP Presets
+
+| Preset | minScore | minStake | Escrow Floor | Use case |
+|--------|----------|----------|-------------|----------|
+| `ACP_PRESET_DEFAULT` | 40 | — | 20% | General commerce |
+| `ACP_PRESET_STRICT` | 65 | 0.5 SOL | 50% | High-value, enterprise |
+| `ACP_PRESET_PERMISSIVE` | — | — | 0% | Social, discovery |
+
+### ERC-8183 Lifecycle
+
+The SDK implements the full 11-state ERC-8183 lifecycle state machine:
+
+```
+bookmarked → messaged → hired → started → delivered → evaluated → paid → completed
+                                                                   ↓
+                                                            disputed → refunded
+```
+
+Use `isValidTransition(from, to)` to validate state changes before processing.
+
+---
+
 ## ERC-8004 Agent Card Builder (v0.13.0)
 
 The SDK now includes a full ERC-8004 agent card **generator** — previously you could only fetch cards. Generate spec-compliant JSON-LD cards from SAID registration data for cross-protocol interoperability with AstraSync, AgentKarma, Tiny.Place, and any ERC-8004 consumer.
@@ -742,6 +816,19 @@ const assessment = await client.assess(wallet, policy);
 MIT
 
 ## Changelog
+
+### v0.14.0
+- **New:** `./acp` subpath export — ERC-8183 Agent Commerce Protocol support module.
+- **New:** `ACPTrustChecker` class — full trust evaluation for ACP transactions. Combines SAID trust scores, staking/slashing data, and risk assessments into allow/deny/review decisions with escrow % and spend cap recommendations.
+- **New:** `ACPTransactionBuilder` — fluent builder for constructing ERC-8183 compliant transactions with trust metadata.
+- **New:** `calculateEscrowPercentage(score, stakeInfo)` — maps trust score to recommended escrow percentage (0-100%).
+- **New:** `calculateSpendCap(score, stakeInfo)` — maximum recommended USDC transaction value based on trust.
+- **New:** `canHire(buyer, provider, valueUSDC)` — quick boolean hire decision.
+- **New:** `createACPConfig(preset, overrides)` — factory for custom ACP configs.
+- **New:** 3 ACP enforcement presets (default, strict, permissive).
+- **New:** Full ERC-8183 11-state lifecycle machine (`isValidTransition`, `requiresTrustCheck`, `allowsEnforcement`).
+- **Tests:** 268 total (198 existing + 70 new ACP tests), all passing against live API.
+- **Strategic:** First SDK to combine ERC-8183 commerce standard with on-chain enforcement (staking/slashing). Every ERC-8183 marketplace needs trust enforcement — SAID is the default.
 
 ### v0.13.0
 - **New:** `buildAgentCard(client, options)` — ERC-8004 compliant agent card generator. Pulls SAID registration data (name, verification, trust score, stake) and merges with developer-provided capabilities, endpoints, and metadata. Produces spec-compliant JSON-LD cards consumable by AstraSync, AgentKarma, Tiny.Place, and any ERC-8004 registry.
