@@ -2,6 +2,22 @@
 
 All notable changes to `@said-protocol/client` are documented here.
 
+## [0.17.1] — 2026-07-25
+
+### Added — Trust Crisis Report
+
+Based on arXiv:2607.08084 which empirically disproved ERC-8004 reputation (73.5%
+of reviewers show coordinated Sybil behavior). SAID's staking/slashing is now the
+only empirically-valid agent trust mechanism on Solana.
+
+- **`SAIDClient.getTrustCrisisReport(wallet)`** — compares economic enforcement
+  data against reputation signals with ERC-8004 Sybil research context
+- **`TrustCrisisReport` type** — structured report with economic trust (stake,
+  slashes, verification), reputation signals (with Sybil vulnerability flag),
+  ERC-8004 context (manipulation costs, Sybil rates), and trust verdict
+  (recommendation + insight string)
+- Fixed trailing comma bug in `test:all` script that was breaking `npm install`
+
 ## [0.17.0] — 2026-07-25
 
 ### Added — SAID Reputation Passport
