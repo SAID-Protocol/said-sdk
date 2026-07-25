@@ -2,6 +2,47 @@
 
 All notable changes to `@said-protocol/client` are documented here.
 
+## [0.17.0] — 2026-07-25
+
+### Added — SAID Reputation Passport
+
+**The #1 product from A2A Trust Gap research (July 2026).** Six independent sources
+confirmed no protocol supplies inter-agent reputation. SAID's unique advantage:
+staking/slashing converts reputation from advisory signal into financial guarantee.
+
+- **`buildPassport()`** — builds a portable cross-protocol trust credential from agent data
+- **`SAIDClient.getReputationPassport(wallet)`** — one-call API to generate a passport
+- **Four protocol serialisation formats:**
+  - `toMCPMeta()` — for MCP `_meta` field (stateless trust checking, zero API calls)
+  - `toA2ACard()` — A2A Agent Card extension fields
+  - `toX402Headers()` — HTTP headers for x402 payment responses
+  - `toAP2Mandate()` — AP2 (Agent Payments Protocol) mandate extension
+- **Trust dimensions:** reputation, economic security (stake), slashing events, verification,
+  feedback count, longevity — all captured independently
+- **Verdict engine:** `trusted` / `provisional` / `insufficient_evidence` / `untrusted`
+  - Follows "unknown ≠ zero" philosophy — new agents get `insufficient_evidence`, not penalised
+  - Only slashed agents or those with proven bad records get `untrusted`
+- **Dynamic terms calculation:** reputation-modulated escrow %, max transaction USDC, daily spend caps
+  - Stake reduces escrow (5% per SOL, max 30%)
+  - Slashing increases escrow (+20% per event)
+- **Third-party attestations:** merge endorsements from multiple platforms
+  - Volume-weighted composite score
+  - Source deduplication (latest wins)
+- **JSON serialisation** with expiry validation and schema versioning
+- **35 dedicated tests** (calculateDimensions, calculateVerdict, calculateTerms, buildPassport,
+  all 4 serialisation formats, JSON round-trip, attestation management)
+
+### Files Added
+- `src/passport.ts` — Reputation Passport module (500+ lines)
+- `src/test/passport.test.ts` — Comprehensive test suite
+
+### Added — Trust Report + Batch Verification
+
+- **`SAIDClient.createTrustReport(wallet)`** — generates a human-readable markdown trust report combining identity, trust score, enforcement, risk, credit score, dual-score, and passport verdict. Returns a recommendation (`allow`/`review`/`deny`) plus full data objects. Ideal for compliance dashboards and partner integrations.
+- **`SAIDClient.batchVerify(wallets[], opts)`** — verify multiple agents in a single call with configurable criteria (minScore, requireStaked, maxSlashes). Returns per-agent results with failure reasons, plus summary counts. More efficient than looping `verify()`.
+- **`./passport` subpath export** added to package.json and tsup config for independent import.
+- **`test:all` script** updated to include passport test suite.
+
 ## [0.16.0] — 2026-07-24
 
 ### Added

@@ -1,7 +1,7 @@
 {
   "name": "@said-protocol/client",
-  "version": "0.16.0",
-  "description": "SAID Protocol SDK — agent identity, trust scoring, enforcement, and cross-chain messaging on Solana",
+  "version": "0.17.0",
+  "description": "SAID Protocol SDK \u2014 agent identity, trust scoring, enforcement, and cross-chain messaging on Solana",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -40,6 +40,12 @@
       "require": "./dist/x402.cjs",
       "default": "./dist/x402.js"
     },
+    "./passport": {
+      "types": "./dist/passport.d.ts",
+      "import": "./dist/passport.js",
+      "require": "./dist/passport.cjs",
+      "default": "./dist/passport.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -52,7 +58,7 @@
     "build": "tsup",
     "test": "node test/integration.mjs",
     "test:cjs": "node test/cjs-import.test.cjs",
-    "test:all": "npm run build && npm run test && npm run test:cjs && node test/acp.test.mjs && node test/x402.test.mjs",
+    "test:all": "npm run build && npm run test && npm run test:cjs && node test/acp.test.mjs && node test/x402.test.mjs && npx tsx --test src/test/passport.test.ts"
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit"
   },

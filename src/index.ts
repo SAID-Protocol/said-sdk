@@ -1,5 +1,5 @@
 /**
- * SAID Protocol Client SDK v0.16.0
+ * SAID Protocol Client SDK v0.17.0
  * Agent identity, reputation, enforcement, and cross-chain messaging on Solana
  *
  * @example
@@ -20,6 +20,8 @@
  * });
  * ```
  */
+
+import type { ReputationPassport as _ReputationPassport } from './passport.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -834,6 +836,56 @@ export class SAIDClient {
     const data = await res.json();
     this.cache.set(cacheKey, data);
     return data;
+  }
+
+  /**
+   * Build a SAID Reputation Passport for an agent.
+   *
+   * This is the flagship product — a portable, cross-protocol trust credential
+   * that combines identity, trust score, enforcement data, and economic backing.
+   * Works across MCP, A2A, x402, and AP2 protocols.
+   *
+   * Gathers all trust signals in parallel (agent data + staking info) and
+   * returns a signed, expiry-bounded passport ready for transport.
+   *
+   * @example
+   * ```ts
+   * const passport = await client.getReputationPassport('WALLET_ADDRESS');
+   *
+   * // Use in MCP _meta field
+   * const meta = toMCPMeta(passport);
+   *
+   * // Use in A2A Agent Card
+   * const extension = toA2ACard(passport);
+   * ```
+   */
+  async getReputationPassport(wallet: string, opts?: {
+    ttlSeconds?: number;
+    attestations?: import('./passport.js').TrustAttestation[];
+  }): Promise<_ReputationPassport> {
+    const { buildPassport } = await import('./passport.js');
+
+    const [agent, stake] = await Promise.all([
+      this.getAgent(wallet),
+      this.getStakeInfo(wallet).catch(() => ({ amountSOL: 0, slashedCount: 0 }) as StakeInfo),
+    ]);
+
+    return buildPassport({
+      wallet,
+      name: agent.identity?.name ?? null,
+      description: agent.identity?.description ?? null,
+      verified: agent.verified,
+      registered: agent.registered,
+      trustScore: agent.trustScore?.score ?? null,
+      stakeSOL: stake.amountSOL,
+      slashedCount: stake.slashedCount,
+      feedbackCount: agent.reputation?.feedbackCount,
+      registeredAt: agent.registeredAt,
+      attestations: opts?.attestations,
+    }, {
+      apiUrl: this.apiUrl,
+      ttlSeconds: opts?.ttlSeconds,
+    });
   }
 
   // ── Staking ─────────────────────────────────────────────────────────────
@@ -1723,6 +1775,206 @@ export class SAIDClient {
     });
     if (!res.ok) throw new SAIDError(`Webhook deletion failed`, res.status);
   }
+
+  /**
+   * Generate a human-readable trust report for an agent.
+   *
+   * Combines all SAID data into a formatted markdown string suitable for
+   * dashboards, compliance reviews, or partner integrations. Includes:
+   * identity, trust score, enforcement status, risk assessment, credit score,
+   * and a recommended action (allow/review/deny).
+   *
+   * @example
+   * ```ts
+   * const report = await client.createTrustReport('WALLET_ADDRESS');
+   * console.log(report.markdown);
+   * console.log(report.recommendation); // 'allow' | 'review' | 'deny'
+   * ```
+   */
+  async createTrustReport(wallet: string): Promise<{
+    markdown: string;
+    recommendation: 'allow' | 'review' | 'deny';
+    summary: TrustSummary;
+    passport: _ReputationPassport;
+    generatedAt: string;
+  }> {
+    const [summary, passport] = await Promise.all([
+      this.getTrustSummary(wallet),
+      this.getReputationPassport(wallet),
+    ]);
+
+    const lines: string[] = [
+      `# SAID Trust Report`,
+      ``,
+      `**Agent:** ${summary.identity?.name ?? 'Unknown'}`,
+      `**Wallet:** ${wallet}`,
+      `**Generated:** ${new Date().toISOString()}`,
+      ``,
+      `## Identity`,
+      ``,
+      `- **Status:** ${summary.verified ? '✅ Verified' : '❌ Unverified'}`,
+      `- **Registered:** ${summary.registered ? 'Yes' : 'No'}`,
+      summary.identity?.description ? `- **Description:** ${summary.identity.description}` : '',
+      ``,
+      `## Trust Score`,
+      ``,
+      summary.trustScore
+        ? `- **Score:** ${summary.trustScore.score}/100 (${summary.trustScore.tier})`
+        : `- **Score:** N/A`,
+      summary.trustScore?.badges?.length
+        ? `- **Badges:** ${summary.trustScore.badges.join(', ')}`
+        : '',
+      ``,
+      `## Enforcement`,
+      ``,
+      `- **Stake:** ${(summary.stake?.amountSOL ?? 0).toFixed(2)} SOL`,
+      `- **Status:** ${summary.stake?.status ?? 'none'}`,
+      `- **Slashes:** ${summary.stake?.slashedCount ?? 0}`,
+      ``,
+      `## Risk Assessment`,
+      ``,
+      `- **Tier:** ${summary.risk.tier}`,
+      `- **Escrow:** ${summary.risk.recommendedEscrowPct}%`,
+      `- **Max TX:** ${(summary.risk.recommendedMaxValueUSDC ?? 0).toLocaleString()} USDC`,
+      summary.risk.riskFactors.length
+        ? `- **Risk Factors:** ${summary.risk.riskFactors.join(', ')}`
+        : '- **Risk Factors:** None',
+      ``,
+      `## Credit Score (SACRS)`,
+      ``,
+      `- **Score:** ${summary.credit.score}/850 (${summary.credit.rating})`,
+      `- **PD:** ${(summary.credit.probabilityOfDefault * 100).toFixed(1)}%`,
+      ``,
+      `## Dual Score`,
+      ``,
+      `- **Provider Trust:** ${summary.dual.provider.score}/100 (${summary.dual.provider.confidence})`,
+      `- **Consumer Trust:** ${summary.dual.consumer.score}/100 (${summary.dual.consumer.confidence})`,
+      ``,
+      `## Passport`,
+      ``,
+      `- **Verdict:** ${passport.verdict}`,
+      `- **Risk Level:** ${passport.riskLevel}`,
+      passport.attestations.length
+        ? `- **Attestations:** ${passport.attestations.length} from ${new Set(passport.attestations.map(a => a.source)).size} sources`
+        : '- **Attestations:** None',
+    ].filter(Boolean);
+
+    const recommendation =
+      passport.verdict === 'trusted'
+        ? 'allow'
+        : passport.verdict === 'untrusted'
+          ? 'deny'
+          : 'review';
+
+    return {
+      markdown: lines.join('\n'),
+      recommendation,
+      summary,
+      passport,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Verify multiple agents in a single batch call.
+   *
+   * Returns a map of wallet → verification result. More efficient than
+   * calling verify() in a loop, and returns a summary of the batch.
+   *
+   * @example
+   * ```ts
+   * const results = await client.batchVerify([walletA, walletB, walletC]);
+   * const trusted = results.passed.map(r => r.wallet);
+   * console.log(`${results.passedCount}/${results.total} agents verified`);
+   * ```
+   */
+  async batchVerify(wallets: string[], opts?: {
+    minScore?: number;
+    requireStaked?: boolean;
+    maxSlashes?: number;
+  }): Promise<{
+    results: Array<{
+      wallet: string;
+      verified: boolean;
+      trustScore: number | null;
+      staked: boolean;
+      slashedCount: number;
+      passed: boolean;
+      reason?: string;
+    }>;
+    passed: Array<{ wallet: string; trustScore: number | null }>;
+    failed: Array<{ wallet: string; reason: string }>;
+    passedCount: number;
+    failedCount: number;
+    total: number;
+  }> {
+    const minScore = opts?.minScore ?? 0;
+    const requireStaked = opts?.requireStaked ?? false;
+    const maxSlashes = opts?.maxSlashes ?? Infinity;
+
+    const results = await Promise.allSettled(
+      wallets.map(async (wallet) => {
+        const [agent, stake] = await Promise.all([
+          this.getAgent(wallet),
+          this.getStakeInfo(wallet).catch(() => ({ amountSOL: 0, slashedCount: 0 }) as StakeInfo),
+        ]);
+
+        const score = agent.trustScore?.score ?? null;
+        let passed = agent.verified;
+        let reason: string | undefined;
+
+        if (!agent.verified) {
+          reason = 'Not verified';
+          passed = false;
+        } else if (score !== null && score < minScore) {
+          reason = `Score ${score} below minimum ${minScore}`;
+          passed = false;
+        } else if (requireStaked && stake.amountSOL <= 0) {
+          reason = 'No stake';
+          passed = false;
+        } else if (stake.slashedCount > maxSlashes) {
+          reason = `${stake.slashedCount} slashes (max ${maxSlashes})`;
+          passed = false;
+        }
+
+        return {
+          wallet,
+          verified: agent.verified,
+          trustScore: score,
+          staked: stake.amountSOL > 0,
+          slashedCount: stake.slashedCount,
+          passed,
+          reason,
+        };
+      }),
+    );
+
+    const processed = results.map((r, i) =>
+      r.status === 'fulfilled'
+        ? r.value
+        : {
+            wallet: wallets[i],
+            verified: false,
+            trustScore: null,
+            staked: false,
+            slashedCount: 0,
+            passed: false,
+            reason: `Error: ${r.reason?.message ?? 'Unknown'}`,
+          },
+    );
+
+    const passed = processed.filter((r) => r.passed);
+    const failed = processed.filter((r) => !r.passed);
+
+    return {
+      results: processed,
+      passed: passed.map((r) => ({ wallet: r.wallet, trustScore: r.trustScore })),
+      failed: failed.map((r) => ({ wallet: r.wallet, reason: r.reason ?? 'Unknown' })),
+      passedCount: passed.length,
+      failedCount: failed.length,
+      total: processed.length,
+    };
+  }
 }
 
 // ── SACRS Scoring Engine ───────────────────────────────────────────────────
@@ -2214,6 +2466,46 @@ export type {
   BuildAgentCardOptions,
   ValidationResult as CardValidationResult,
 } from './agent-card.js';
+
+// ── Reputation Passport (re-exported) ──────────────────────────────────────
+//
+// The #1 product from A2A Trust Gap research (July 2026).
+// Portable, cross-protocol trust credential combining identity, score,
+// enforcement data, and economic backing. Works across MCP, A2A, x402, AP2.
+//
+// Six independent sources confirmed no protocol supplies inter-agent reputation.
+// SAID's unique advantage: staking/slashing converts reputation from advisory
+// signal into financial guarantee.
+
+export {
+  buildPassport,
+  calculateDimensions,
+  calculateVerdict,
+  calculateTerms,
+  toMCPMeta,
+  toA2ACard,
+  toX402Headers,
+  toAP2Mandate,
+  toJSON as passportToJSON,
+  fromJSON as passportFromJSON,
+  isValid as isPassportValid,
+  addAttestation,
+  getAttestationScore,
+} from './passport.js';
+
+export type {
+  PassportTrustDimensions,
+  PassportRiskLevel,
+  ProtocolTarget,
+  TrustAttestation,
+  ReputationPassport,
+  MCPMetaPassport,
+  A2AAgentCardExtension,
+  X402TrustHeader,
+  AP2MandateExtension,
+  PassportConfig,
+  PassportInput,
+} from './passport.js';
 
 // ── Webhook Signature Verification Helper ──────────────────────────────────
 

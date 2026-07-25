@@ -920,6 +920,111 @@ const result = await facilitator.checkPayment(res, {
 // result.checked === 'both'
 ```
 
+## Reputation Passport (v0.17.0) ⭐ NEW
+
+The **SAID Reputation Passport** is a portable cross-protocol trust credential that combines identity, trust score, enforcement data, and economic backing into a single credential. It works across MCP, A2A, x402, and AP2 protocols.
+
+Six independent research sources confirmed that no protocol supplies inter-agent reputation. SAID's unique advantage: staking/slashing converts reputation from advisory signal into financial guarantee.
+
+### Generate a Passport
+
+```typescript
+import { SAIDClient } from '@said-protocol/client';
+import { toMCPMeta, toA2ACard, toX402Headers, toAP2Mandate } from '@said-protocol/client/passport';
+
+const client = new SAIDClient();
+
+// One call generates a portable passport
+const passport = await client.getReputationPassport('WALLET_ADDRESS');
+
+console.log(passport.verdict);        // 'trusted' | 'provisional' | 'insufficient_evidence' | 'untrusted'
+console.log(passport.riskLevel);      // 'low' | 'medium' | 'high' | 'critical' | 'unknown'
+console.log(passport.dimensions);     // Trust dimensions: reputation, economicSecurity, slashingEvents, etc.
+console.log(passport.terms);          // Dynamic terms: escrowPct, maxTxUSDC, dailyCapUSDC
+```
+
+### Serialize for Different Protocols
+
+```typescript
+// For MCP — embed in _meta field (stateless, no API calls needed by verifier)
+const meta = toMCPMeta(passport);
+// { 'said:wallet': '...', 'said:score': 85, 'said:tier': 'gold', 'said:staked': 5.0, ... }
+
+// For A2A — extend Agent Card
+const extension = toA2ACard(passport);
+// { 'said:trust': { verdict: 'trusted', score: 85, ... } }
+
+// For x402 — HTTP headers
+const headers = toX402Headers(passport);
+// { 'X-SAID-Verdict': 'trusted', 'X-SAID-Score': '85', ... }
+
+// For AP2 — mandate extension
+const mandate = toAP2Mandate(passport);
+// { said_trust_verdict: 'trusted', said_max_txn_usdc: 500, ... }
+```
+
+### Add Third-Party Attestations
+
+```typescript
+import { addAttestation } from '@said-protocol/client/passport';
+
+// Attestations from partner platforms increase confidence
+const enriched = addAttestation(passport, {
+  source: 'clawpump',
+  type: 'transactional',
+  score: 92,
+  volume: 150,
+  updatedAt: new Date().toISOString(),
+});
+```
+
+### Passport Verdicts
+
+| Verdict | Risk Level | Criteria | Use Case |
+|---------|-----------|----------|----------|
+| `trusted` | low | Verified + score ≥ 70 + staked + no slashes | Allow transactions autonomously |
+| `provisional` | medium-high | Registered but doesn't meet all trust criteria | Allow with escrow / review |
+| `insufficient_evidence` | unknown | Not registered or minimal data | Default-deny or manual review |
+| `untrusted` | critical | Slashed or very low score | Block all transactions |
+
+## Trust Report (v0.17.0)
+
+Generate a human-readable markdown trust report combining all SAID data:
+
+```typescript
+const report = await client.createTrustReport('WALLET_ADDRESS');
+
+console.log(report.markdown);       // Formatted markdown report
+console.log(report.recommendation); // 'allow' | 'review' | 'deny'
+console.log(report.summary);        // Full TrustSummary object
+console.log(report.passport);       // ReputationPassport
+```
+
+The report includes: identity status, trust score breakdown, enforcement data (stake + slashes), risk tier with escrow recommendations, SACRS credit score with probability of default, dual-score (provider + consumer trust), and passport verdict.
+
+## Batch Verification (v0.17.0)
+
+Verify multiple agents in a single call with configurable criteria:
+
+```typescript
+const results = await client.batchVerify(
+  ['WALLET_A', 'WALLET_B', 'WALLET_C'],
+  {
+    minScore: 50,           // Require score ≥ 50
+    requireStaked: true,    // Must have SOL staked
+    maxSlashes: 0,          // No slashing history
+  }
+);
+
+console.log(`${results.passedCount}/${results.total} agents verified`);
+
+// Get passing wallets
+const trusted = results.passed.map(r => r.wallet);
+
+// Get failure reasons
+results.failed.forEach(f => console.log(`${f.wallet}: ${f.reason}`));
+```
+
 ## License
 
 MIT

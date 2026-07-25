@@ -8,6 +8,7 @@ export default defineConfig({
     'agent-card': 'src/agent-card.ts',
     'acp': 'src/acp.ts',
     'x402': 'src/x402.ts',
+    'passport': 'src/passport.ts',
   },
   format: ['cjs', 'esm'],
   dts: true,
