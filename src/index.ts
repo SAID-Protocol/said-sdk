@@ -1,5 +1,5 @@
 /**
- * SAID Protocol Client SDK v0.17.0
+ * SAID Protocol Client SDK v0.19.0
  * Agent identity, reputation, enforcement, and cross-chain messaging on Solana
  *
  * @example
@@ -22,6 +22,7 @@
  */
 
 import type { ReputationPassport as _ReputationPassport } from './passport.js';
+import { SatiBridge as _SatiBridge } from './sati.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -2044,6 +2045,22 @@ export class SAIDClient {
   async getTrustCrisisReport(wallet: string): Promise<TrustCrisisReport> {
     const res = await this.fetchWithRetry(`${this.apiUrl}/api/trust-crisis/${wallet}`);
     return res.json() as Promise<TrustCrisisReport>;
+  }
+
+  /**
+   * Get a SATI Compatibility Bridge instance bound to this client.
+   * The bridge combines SATI registry data (official Solana agent registry)
+   * with SAID economic enforcement (staking/slashing) for unified trust.
+   *
+   * @example
+   * ```ts
+   * const bridge = client.getSatiBridge();
+   * const trust = await bridge.getUnifiedTrust('WALLET');
+   * ```
+   */
+  getSatiBridge(config?: import('./sati.js').SatiBridgeConfig): import('./sati.js').SatiBridge {
+    const { SatiBridge } = { SatiBridge: _SatiBridge };
+    return new SatiBridge(this, config);
   }
 }
 
