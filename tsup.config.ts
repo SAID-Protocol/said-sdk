@@ -10,6 +10,7 @@ export default defineConfig({
     'x402': 'src/x402.ts',
     'passport': 'src/passport.ts',
     'trust-oracle': 'src/trust-oracle.ts',
+    'sati': 'src/sati.ts',
   },
   format: ['cjs', 'esm'],
   dts: true,
