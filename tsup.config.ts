@@ -9,6 +9,7 @@ export default defineConfig({
     'acp': 'src/acp.ts',
     'x402': 'src/x402.ts',
     'passport': 'src/passport.ts',
+    'trust-oracle': 'src/trust-oracle.ts',
   },
   format: ['cjs', 'esm'],
   dts: true,

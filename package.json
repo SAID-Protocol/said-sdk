@@ -1,6 +1,6 @@
 {
   "name": "@said-protocol/client",
-  "version": "0.17.1",
+  "version": "0.18.0",
   "description": "SAID Protocol SDK \u2014 agent identity, trust scoring, enforcement, and cross-chain messaging on Solana",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -46,6 +46,12 @@
       "require": "./dist/passport.cjs",
       "default": "./dist/passport.js"
     },
+    "./trust-oracle": {
+      "types": "./dist/trust-oracle.d.ts",
+      "import": "./dist/trust-oracle.js",
+      "require": "./dist/trust-oracle.cjs",
+      "default": "./dist/trust-oracle.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -58,7 +64,7 @@
     "build": "tsup",
     "test": "node test/integration.mjs",
     "test:cjs": "node test/cjs-import.test.cjs",
-    "test:all": "npm run build && npm run test && npm run test:cjs && node test/acp.test.mjs && node test/x402.test.mjs && npx tsx --test src/test/passport.test.ts",
+    "test:all": "npm run build && npm run test && npm run test:cjs && node test/acp.test.mjs && node test/x402.test.mjs && npx tsx --test src/test/passport.test.ts && npx tsx --test src/test/trust-oracle.test.ts",
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit"
   },

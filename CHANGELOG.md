@@ -1,6 +1,31 @@
 # Changelog
 
-All notable changes to `@said-protocol/client` are documented here.
+All notable changes to `@said-protocol/client` are documented in this file.
+
+## [0.18.0] — 2026-07-25
+
+### Added — SAID Trust Oracle for ERC-8183 Agent Commerce
+
+The flagship Layer 7 product. SAID now implements the **Evaluator role** in the
+ERC-8183 Job lifecycle — the role that requires trust. Every ERC-8183 marketplace
+(Virtuals ACP, OKX, BNBAgent) needs an evaluator. SAID is the only evaluator
+backed by real economic enforcement (staking/slashing).
+
+New `./trust-oracle` entry point:
+
+- **`TrustOracle` class** — Evaluator-as-a-Service for ERC-8183 marketplaces
+- **`trustGate()`** — Pre-transaction trust check (ReputationGateHook)
+- **`selectEvaluator()`** — Pick staked, reputable agents as evaluators
+- **`evaluate()`** — Verdict on delivered work (pass/fail/partial) with slashing recommendations
+- **`batchTrustGate()`** — Batch trust checks for multiple wallets
+- **Helper functions** — `trustToEscrowPct`, `trustToMaxTxValue`, `categorizeSeverity`, `calculateSlashPct`
+- **Signed receipts** — HMAC-signed non-repudiation for every evaluation
+- **6 evaluation criteria** — deliverable_exists, claim_substantive, provider_trust_minimum, provider_staked, clean_slash_history, evidence_provided
+- **3 verdicts** — pass (release 100%), partial (release 50%), fail (refund + slash)
+
+Revenue model: $0.01/check via x402. Y1 estimate: $100-400K.
+
+34 new tests (helper functions + mock client + live API). All passing.
 
 ## [0.17.1] — 2026-07-25
 
