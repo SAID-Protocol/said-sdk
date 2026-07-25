@@ -36,6 +36,13 @@ staking/slashing converts reputation from advisory signal into financial guarant
 - `src/passport.ts` — Reputation Passport module (500+ lines)
 - `src/test/passport.test.ts` — Comprehensive test suite
 
+### Added — Trust Report + Batch Verification
+
+- **`SAIDClient.createTrustReport(wallet)`** — generates a human-readable markdown trust report combining identity, trust score, enforcement, risk, credit score, dual-score, and passport verdict. Returns a recommendation (`allow`/`review`/`deny`) plus full data objects. Ideal for compliance dashboards and partner integrations.
+- **`SAIDClient.batchVerify(wallets[], opts)`** — verify multiple agents in a single call with configurable criteria (minScore, requireStaked, maxSlashes). Returns per-agent results with failure reasons, plus summary counts. More efficient than looping `verify()`.
+- **`./passport` subpath export** added to package.json and tsup config for independent import.
+- **`test:all` script** updated to include passport test suite.
+
 ## [0.16.0] — 2026-07-24
 
 ### Added
