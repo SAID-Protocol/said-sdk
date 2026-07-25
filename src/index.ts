@@ -505,6 +505,53 @@ interface CacheEntry<T> {
   expiresAt: number;
 }
 
+/** Trust Crisis Report — economic enforcement vs reputation comparison */
+export interface TrustCrisisReport {
+  wallet: string;
+  timestamp: string;
+  economicTrust: {
+    registered: boolean;
+    staked: boolean;
+    stakeAmountSol: number;
+    isSlashed: boolean;
+    slashCount: number;
+    isVerified: boolean;
+    verificationTier: number;
+    enforcementTier: 'economic' | 'reputation' | 'none';
+    economicSecuritySol: number;
+    riskLevel: 'low' | 'medium' | 'high' | 'critical';
+    riskReasons: string[];
+  };
+  reputationSignals: {
+    feedbackCount: number;
+    reputationScore: number | null;
+    bayesianScore: number | null;
+    trustScore: number | null;
+    sybilVulnerable: boolean;
+    sybilRiskNote: string;
+  };
+  erc8004Context: {
+    reputationRegistryReliable: boolean;
+    sybilRateEth: number;
+    sybilRateBsc: number;
+    sybilRateBase: number;
+    invalidatedAfterSybilRemovalBsc: number;
+    invalidatedAfterSybilRemovalBase: number;
+    liveServiceEndpointRate: string;
+    manipulationCostUsd: string;
+    citation: string;
+  };
+  trustVerdict: {
+    economicSecuritySol: number;
+    hasEconomicCommitment: boolean;
+    skinInGameLevel: 'none' | 'minimal' | 'moderate' | 'strong' | 'whale';
+    hasBeenSlashed: boolean;
+    recommendation: 'trusted' | 'caution' | 'review' | 'deny' | 'unknown';
+    recommendationReason: string;
+    insight: string;
+  };
+}
+
 class SimpleCache {
   private store = new Map<string, CacheEntry<unknown>>();
   private ttlMs: number;
@@ -1974,6 +2021,29 @@ export class SAIDClient {
       failedCount: failed.length,
       total: processed.length,
     };
+  }
+
+  /**
+   * Get a Trust Crisis report for a wallet — compares economic enforcement
+   * data against reputation signals with ERC-8004 Sybil research context.
+   *
+   * Based on arXiv:2607.08084 which proved 73.5% of ERC-8004 reviewers
+   * show coordinated Sybil behavior.
+   *
+   * Requires the SAID API to have the trust-crisis endpoint deployed.
+   *
+   * @example
+   * ```ts
+   * const report = await client.getTrustCrisisReport(wallet);
+   * if (report.trustVerdict.recommendation === 'trusted') {
+   *   // Agent has real economic skin-in-the-game
+   *   proceedWithTransaction();
+   * }
+   * ```
+   */
+  async getTrustCrisisReport(wallet: string): Promise<TrustCrisisReport> {
+    const res = await this.fetchWithRetry(`${this.apiUrl}/api/trust-crisis/${wallet}`);
+    return res.json() as Promise<TrustCrisisReport>;
   }
 }
 

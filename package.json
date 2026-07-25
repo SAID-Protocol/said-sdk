@@ -58,7 +58,7 @@
     "build": "tsup",
     "test": "node test/integration.mjs",
     "test:cjs": "node test/cjs-import.test.cjs",
-    "test:all": "npm run build && npm run test && npm run test:cjs && node test/acp.test.mjs && node test/x402.test.mjs && npx tsx --test src/test/passport.test.ts"
+    "test:all": "npm run build && npm run test && npm run test:cjs && node test/acp.test.mjs && node test/x402.test.mjs && npx tsx --test src/test/passport.test.ts",
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit"
   },
