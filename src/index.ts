@@ -1,5 +1,5 @@
 /**
- * SAID Protocol Client SDK v0.16.0
+ * SAID Protocol Client SDK v0.17.0
  * Agent identity, reputation, enforcement, and cross-chain messaging on Solana
  *
  * @example
@@ -20,6 +20,8 @@
  * });
  * ```
  */
+
+import type { ReputationPassport as _ReputationPassport } from './passport.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -834,6 +836,56 @@ export class SAIDClient {
     const data = await res.json();
     this.cache.set(cacheKey, data);
     return data;
+  }
+
+  /**
+   * Build a SAID Reputation Passport for an agent.
+   *
+   * This is the flagship product — a portable, cross-protocol trust credential
+   * that combines identity, trust score, enforcement data, and economic backing.
+   * Works across MCP, A2A, x402, and AP2 protocols.
+   *
+   * Gathers all trust signals in parallel (agent data + staking info) and
+   * returns a signed, expiry-bounded passport ready for transport.
+   *
+   * @example
+   * ```ts
+   * const passport = await client.getReputationPassport('WALLET_ADDRESS');
+   *
+   * // Use in MCP _meta field
+   * const meta = toMCPMeta(passport);
+   *
+   * // Use in A2A Agent Card
+   * const extension = toA2ACard(passport);
+   * ```
+   */
+  async getReputationPassport(wallet: string, opts?: {
+    ttlSeconds?: number;
+    attestations?: import('./passport.js').TrustAttestation[];
+  }): Promise<_ReputationPassport> {
+    const { buildPassport } = await import('./passport.js');
+
+    const [agent, stake] = await Promise.all([
+      this.getAgent(wallet),
+      this.getStakeInfo(wallet).catch(() => ({ amountSOL: 0, slashedCount: 0 }) as StakeInfo),
+    ]);
+
+    return buildPassport({
+      wallet,
+      name: agent.identity?.name ?? null,
+      description: agent.identity?.description ?? null,
+      verified: agent.verified,
+      registered: agent.registered,
+      trustScore: agent.trustScore?.score ?? null,
+      stakeSOL: stake.amountSOL,
+      slashedCount: stake.slashedCount,
+      feedbackCount: agent.reputation?.feedbackCount,
+      registeredAt: agent.registeredAt,
+      attestations: opts?.attestations,
+    }, {
+      apiUrl: this.apiUrl,
+      ttlSeconds: opts?.ttlSeconds,
+    });
   }
 
   // ── Staking ─────────────────────────────────────────────────────────────
@@ -2214,6 +2266,46 @@ export type {
   BuildAgentCardOptions,
   ValidationResult as CardValidationResult,
 } from './agent-card.js';
+
+// ── Reputation Passport (re-exported) ──────────────────────────────────────
+//
+// The #1 product from A2A Trust Gap research (July 2026).
+// Portable, cross-protocol trust credential combining identity, score,
+// enforcement data, and economic backing. Works across MCP, A2A, x402, AP2.
+//
+// Six independent sources confirmed no protocol supplies inter-agent reputation.
+// SAID's unique advantage: staking/slashing converts reputation from advisory
+// signal into financial guarantee.
+
+export {
+  buildPassport,
+  calculateDimensions,
+  calculateVerdict,
+  calculateTerms,
+  toMCPMeta,
+  toA2ACard,
+  toX402Headers,
+  toAP2Mandate,
+  toJSON as passportToJSON,
+  fromJSON as passportFromJSON,
+  isValid as isPassportValid,
+  addAttestation,
+  getAttestationScore,
+} from './passport.js';
+
+export type {
+  PassportTrustDimensions,
+  PassportRiskLevel,
+  ProtocolTarget,
+  TrustAttestation,
+  ReputationPassport,
+  MCPMetaPassport,
+  A2AAgentCardExtension,
+  X402TrustHeader,
+  AP2MandateExtension,
+  PassportConfig,
+  PassportInput,
+} from './passport.js';
 
 // ── Webhook Signature Verification Helper ──────────────────────────────────
 

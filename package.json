@@ -1,7 +1,7 @@
 {
   "name": "@said-protocol/client",
-  "version": "0.16.0",
-  "description": "SAID Protocol SDK — agent identity, trust scoring, enforcement, and cross-chain messaging on Solana",
+  "version": "0.17.0",
+  "description": "SAID Protocol SDK \u2014 agent identity, trust scoring, enforcement, and cross-chain messaging on Solana",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
