@@ -1,5 +1,5 @@
 /**
- * SAID Protocol Client SDK v0.19.0
+ * SAID Protocol Client SDK v0.20.0
  * Agent identity, reputation, enforcement, and cross-chain messaging on Solana
  *
  * @example
@@ -2593,6 +2593,40 @@ export type {
   PassportConfig,
   PassportInput,
 } from './passport.js';
+
+// ── Webhook Signature Verification Helper ──────────────────────────────────
+
+// ── Enforcement Oracle (re-exported) ────────────────────────────────────────
+//
+// The #1 strategic product from the 90-Day Build Priority research.
+// Wraps SAID's staking/slashing into a deployable x402 trust middleware.
+// Every x402 marketplace needs enforcement — SAID is the only one with
+// on-chain economic enforcement for agents.
+
+export {
+  EnforcementOracle,
+  createStrictOracle,
+  createPermissiveOracle,
+  createX402Oracle,
+} from './enforcement-oracle.js';
+
+export type {
+  EnforcementAction,
+  EnforcementVerdict,
+  EnforcementOracleConfig,
+  PaymentCheckResult,
+} from './enforcement-oracle.js';
+
+// ── MCP Server ─────────────────────────────────────────────────────────────
+//
+// The #1 competitive gap: every competitor (ChainAware, Mnemom, MINT) has an
+// MCP server. Now SAID does too — with staking/slashing signals they can't match.
+// 12 tools exposing the full SDK via stdio JSON-RPC for Claude Code / Cursor.
+
+export {
+  createSaidMcpServer,
+  startStdioServer,
+} from './mcp-server.js';
 
 // ── Webhook Signature Verification Helper ──────────────────────────────────
 

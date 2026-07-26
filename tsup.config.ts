@@ -12,6 +12,7 @@ export default defineConfig({
     'trust-oracle': 'src/trust-oracle.ts',
     'sati': 'src/sati.ts',
     'mcp-server': 'src/mcp-server.ts',
+    'enforcement-oracle': 'src/enforcement-oracle.ts',
   },
   format: ['cjs', 'esm'],
   dts: true,

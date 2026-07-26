@@ -2,7 +2,7 @@
 
 Official SDK for [SAID Protocol](https://saidprotocol.com) — agent identity, trust scoring, and cross-chain messaging on Solana.
 
-> **v0.20.0** — MCP Server (12 tools) + Trust Oracle + Reputation Passport + ERC-8183 ACP + Agent Card Builder + Dual-Score Model + SACRS Credit Score + SATI Bridge + Trust Middleware + Signed Receipts.
+> **v0.21.0** — MCP Server (12 tools) + Enforcement Oracle for x402 + Trust Oracle for ERC-8183 + SATI Compatibility + Reputation Passport + Trust Report + x402 Payment Trust Facilitator + ERC-8183 ACP + Agent Card Builder + Policy Presets + Dual-Score Model + SACRS Credit Score + Trust Middleware + Signed Receipts.
 
 ## What is SAID?
 
@@ -729,7 +729,87 @@ SAID uses a multi-dimensional scoring system (0-100):
 
 **Payments (x402):** Solana, Base, Polygon, Avalanche, Sei
 
-## ERC-8183 Agent Commerce Protocol (v0.14.0) ⭐ NEW
+## Enforcement Oracle for x402 (v0.20.0) 🆕
+
+The #1 strategic product from SAID's 90-day research synthesis. Sits in x402 payment flows and enforces staking/slashing conditions BEFORE settlement. Every x402 marketplace needs trust enforcement — SAID is the only protocol with on-chain economic enforcement for agents.
+
+### Quick Start
+
+```typescript
+import { SAIDClient } from '@said-protocol/client';
+import { EnforcementOracle } from '@said-protocol/client/enforcement-oracle';
+
+const said = new SAIDClient();
+const oracle = new EnforcementOracle(said);
+
+// Check before allowing payment
+const verdict = await oracle.enforce('AGENT_WALLET');
+if (verdict.action === 'block') {
+  throw new Error(`Payment blocked: ${verdict.summary}`);
+} else if (verdict.action === 'require_escrow') {
+  console.log(`Escrow required: ${verdict.escrowPct}%`);
+}
+// Proceed with payment...
+```
+
+### Two-Sided Payment Check
+
+```typescript
+const result = await oracle.checkPayment(payerWallet, payeeWallet);
+if (!result.proceed) {
+  throw new Error(result.recommendation);
+}
+if (result.escrowRequired) {
+  await createEscrow(result.escrowPct);
+}
+```
+
+### Wrap fetch for automatic enforcement
+
+```typescript
+const enforcedFetch = oracle.wrapFetch(fetch);
+// 402 responses are now automatically trust-checked
+const res = await enforcedFetch('https://api.example.com/data');
+```
+
+### Factory Presets
+
+```typescript
+import { createStrictOracle, createPermissiveOracle, createX402Oracle } from '@said-protocol/client/enforcement-oracle';
+
+const strict = createStrictOracle(said);      // High-value/DeFi
+const balanced = createX402Oracle(said);       // Default x402 flows
+const permissive = createPermissiveOracle(said); // Social/low-value
+```
+
+### Deploy as API endpoint
+
+```typescript
+// Hono/Express
+app.get('/enforce/:wallet', async (c) => {
+  const verdict = await oracle.enforce(c.req.param('wallet'));
+  return oracle.toJsonResponse(verdict);
+});
+```
+
+Returns trust metadata in headers:
+- `X-SAID-Action`: allow | require_escrow | block
+- `X-SAID-Score`: trust score (0-100)
+- `X-SAID-Stake`: SOL staked
+- `X-SAID-Slashes`: slash count
+- `X-SAID-Escrow-Pct`: recommended escrow %
+
+### Enforcement Actions
+
+| Action | When |
+|--------|------|
+| `allow` | Verified, score ≥ 40, staked ≥ 0.5 SOL, ≤ 3 slashes |
+| `require_escrow` | Unverified, low stake, or minor risk factors |
+| `block` | Score < 20, 3+ slashes, or strict mode + unregistered |
+
+Revenue model: $0.01/check via x402 pay-per-query.
+
+## ERC-8183 Agent Commerce Protocol (v0.14.0)
 
 First SDK to combine ERC-8183 ACP (Virtuals Protocol's agent commerce standard — $4.5M cumulative fees, 18K+ agents) with on-chain enforcement. Every ERC-8183 marketplace needs trust enforcement — SAID is the default.
 
