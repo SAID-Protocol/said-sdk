@@ -1020,9 +1020,19 @@ async function resolveCmd(args: Record<string, string>) {
   }
 }
 
+// ── MCP Server Command ──
+
+async function startMcpServer(args: Record<string, string>): Promise<void> {
+  const { startStdioServer } = await import('./mcp-server.js');
+  const opts: { apiUrl?: string; rpcUrl?: string } = {};
+  if (args.rpc) opts.rpcUrl = args.rpc;
+  if (args['api-url']) opts.apiUrl = args['api-url'];
+  await startStdioServer(opts);
+}
+
 // ── Main ──
 
-const CLI_VERSION = "0.13.0";
+const CLI_VERSION = "0.20.0";
 const command = process.argv[2];
 const args = parseArgs(process.argv.slice(3));
 
@@ -1052,6 +1062,14 @@ switch (command) {
   case "card": cardCmd(args); break;
   case "discover": discoverCmd(args); break;
   case "resolve": resolveCmd(args); break;
+  // MCP Server
+  case "--mcp":
+  case "mcp":
+    startMcpServer(args).catch((e) => {
+      console.error('MCP server error:', e);
+      process.exit(1);
+    });
+    break;
   default:
     console.log(`SAID Protocol CLI v${CLI_VERSION}
 
@@ -1087,6 +1105,9 @@ Usage:
   said card              --wallet <address> [--json]         (view ERC-8004 agent card)
   said discover           [--query <term>] [--limit <n>]      (search agents across chains)
   said resolve            --wallet <address> [--chain <name>] (resolve agent across chains)
+
+  ── MCP Server ──
+  said --mcp                                                (start MCP server on stdio for Claude Code, Cursor, etc.)
 
 Options:
   --rpc <url>   Custom RPC URL (default: mainnet-beta)`);

@@ -2617,6 +2617,17 @@ export type {
   PaymentCheckResult,
 } from './enforcement-oracle.js';
 
+// ── MCP Server ─────────────────────────────────────────────────────────────
+//
+// The #1 competitive gap: every competitor (ChainAware, Mnemom, MINT) has an
+// MCP server. Now SAID does too — with staking/slashing signals they can't match.
+// 12 tools exposing the full SDK via stdio JSON-RPC for Claude Code / Cursor.
+
+export {
+  createSaidMcpServer,
+  startStdioServer,
+} from './mcp-server.js';
+
 // ── Webhook Signature Verification Helper ──────────────────────────────────
 
 /**

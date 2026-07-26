@@ -2,7 +2,7 @@
 
 Official SDK for [SAID Protocol](https://saidprotocol.com) — agent identity, trust scoring, and cross-chain messaging on Solana.
 
-> **v0.20.0** — Enforcement Oracle for x402 + Trust Oracle for ERC-8183 + SATI Compatibility + Reputation Passport + Trust Report + x402 Payment Trust Facilitator + ERC-8183 ACP + Agent Card Builder + Policy Presets + Dual-Score Model + SACRS Credit Score + Trust Middleware + Signed Receipts.
+> **v0.21.0** — MCP Server (12 tools) + Enforcement Oracle for x402 + Trust Oracle for ERC-8183 + SATI Compatibility + Reputation Passport + Trust Report + x402 Payment Trust Facilitator + ERC-8183 ACP + Agent Card Builder + Policy Presets + Dual-Score Model + SACRS Credit Score + Trust Middleware + Signed Receipts.
 
 ## What is SAID?
 
@@ -539,7 +539,71 @@ npx @said-protocol/client risk --wallet WALLET_ADDRESS
 npx @said-protocol/client assess --wallet WALLET_ADDRESS --min-score 50 --require-verified true
 npx @said-protocol/client credit --wallet WALLET_ADDRESS
 npx @said-protocol/client stats
+npx @said-protocol/client --mcp                              # Start MCP server
 ```
+
+## MCP Server (v0.20.0)
+
+Expose SAID's full trust infrastructure to any MCP-compatible AI agent (Claude Code, Cursor, Gemini, etc.).
+
+### Quick Start
+
+Add to your Claude Code `mcp.json`:
+```json
+{
+  "mcpServers": {
+    "said": {
+      "command": "npx",
+      "args": ["-y", "@said-protocol/client", "--mcp"]
+    }
+  }
+}
+}
+```
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `said_verify_agent` | Full agent verification + identity + trust score |
+| `said_trust_score` | Multi-dimensional score breakdown (6 pillars) |
+| `said_risk_assessment` | Risk tier + recommended tx params + escrow |
+| `said_credit_score` | SACRS 300-850 FICO-compatible credit score |
+| `said_dual_score` | Provider trust vs consumer trust |
+| `said_trust_summary` | One-call comprehensive overview |
+| `said_stake_info` | Staking amount, status, slashing history |
+| `said_batch_verify` | Batch verify up to 25 wallets |
+| `said_feedback` | Agent reviews and feedback |
+| `said_leaderboard` | Top agents by reputation |
+| `said_agent_card` | ERC-8004 Agent Card (JSON-LD) |
+| `said_protocol_stats` | Protocol-wide statistics |
+
+### Programmatic Usage
+
+```ts
+import { createSaidMcpServer } from '@said-protocol/client/mcp-server';
+
+const handlers = createSaidMcpServer();
+
+// List tools
+const tools = await handlers.listTools();
+
+// Call a tool
+const result = await handlers.callTool({
+  name: 'said_verify_agent',
+  arguments: { wallet: 'WALLET_ADDRESS' },
+});
+```
+
+### Why This Matters
+
+Competitors (ChainAware: 274K agents indexed, Mnemom: MCP-native trust scanning)
+already expose MCP servers. SAID's MCP server offers superior data they can't match:
+- **Staking/slashing enforcement** — real economic skin in the game
+- **SACRS credit scores** — FICO-compatible 300-850
+- **Dual-score model** — provider trust vs consumer trust
+- **Risk-gated recommendations** — escrow %, max tx value
+
 
 ### Staking Commands
 
