@@ -2,7 +2,35 @@
 
 All notable changes to `@said-protocol/client` are documented in this file.
 
-## [0.18.0] — 2026-07-25
+## [0.20.0] — 2026-07-26
+
+### Added — SAID Enforcement Oracle for x402 Payment Flows
+
+The #1 product from the 90-Day Build Priority research (July 2026). Every x402
+marketplace needs trust enforcement — SAID is the only protocol with on-chain
+staking/slashing for AI agents. This module wraps that into a deployable middleware.
+
+New `./enforcement-oracle` entry point:
+
+- **`EnforcementOracle` class** — x402 trust enforcement middleware
+- **`enforce(wallet)`** — Core check: returns allow/require_escrow/block verdict
+- **`checkPayment(payer, payee?)`** — Two-sided trust check for marketplace flows
+- **`batchEnforce(wallets[])`** — Parallel enforcement checks
+- **`wrapFetch(fetchFn)`** — Intercept x402 402 responses with trust enforcement
+- **`toJsonResponse(verdict)`** — Deploy as API endpoint with proper HTTP semantics
+- **Three factory presets:** `createStrictOracle`, `createPermissiveOracle`, `createX402Oracle`
+- Economic security levels: none/minimal/moderate/strong/whale
+- Dynamic escrow calculation based on score, stake, and slash history
+- Smart caching (allowed=30s, escrow=15s, blocked=not cached)
+- Trust metadata headers (X-SAID-Action, X-SAID-Score, X-SAID-Stake, etc.)
+
+Revenue model: $0.01/check via x402. At 165M monthly x402 transactions,
+capturing 0.1% = $1,650/month. Capturing 1% = $16,500/month.
+
+This is SAID's strategic wedge — being the ENFORCEMENT ORACLE for the
+agent commerce stack that Visa, Mastercard, Google, Coinbase are building.
+
+## [0.19.0] — 2026-07-25
 
 ### Added — SAID Trust Oracle for ERC-8183 Agent Commerce
 
