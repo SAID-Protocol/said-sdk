@@ -1,6 +1,6 @@
 {
   "name": "@said-protocol/client",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "description": "SAID Protocol SDK \u2014 agent identity, trust scoring, enforcement, and cross-chain messaging on Solana",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -58,6 +58,12 @@
       "require": "./dist/sati.cjs",
       "default": "./dist/sati.js"
     },
+    "./mcp-server": {
+      "types": "./dist/mcp-server.d.ts",
+      "import": "./dist/mcp-server.js",
+      "require": "./dist/mcp-server.cjs",
+      "default": "./dist/mcp-server.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -70,7 +76,7 @@
     "build": "tsup",
     "test": "node test/integration.mjs",
     "test:cjs": "node test/cjs-import.test.cjs",
-    "test:all": "npm run build && npm run test && npm run test:cjs && node test/acp.test.mjs && node test/x402.test.mjs && npx tsx --test src/test/passport.test.ts && npx tsx --test src/test/trust-oracle.test.ts && npx tsx --test src/test/sati.test.ts",
+    "test:all": "npm run build && npm run test && npm run test:cjs && node test/acp.test.mjs && node test/x402.test.mjs && npx tsx --test src/test/passport.test.ts && npx tsx --test src/test/trust-oracle.test.ts && npx tsx --test src/test/sati.test.ts && npx tsx --test src/test/mcp-server.test.ts",
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit"
   },
@@ -95,6 +101,8 @@
     "staking",
     "slashing",
     "mcp",
+    "mcp-server",
+    "model-context-protocol",
     "cjs",
     "esm",
     "dual-module"

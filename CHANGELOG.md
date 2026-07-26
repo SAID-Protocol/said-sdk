@@ -2,6 +2,44 @@
 
 All notable changes to `@said-protocol/client` are documented in this file.
 
+## [0.20.0] — 2026-07-26
+
+### Added — MCP Server (Model Context Protocol)
+
+The #1 competitive gap identified across all market intelligence scans: competitors
+(ChainAware, Mnemom, MINT Protocol) all expose MCP servers for AI agents to query
+trust data. SAID now does too — with richer data and staking/slashing signals
+they can't match.
+
+New `./mcp-server` entry point:
+
+- **`createSaidMcpServer()`** — Factory returning MCP-compatible handlers
+- **`startStdioServer()`** — Standalone stdio JSON-RPC server (zero dependencies)
+- **12 MCP tools** exposing the full SDK:
+  - `said_verify_agent` — Full agent verification + identity + trust score
+  - `said_trust_score` — Multi-dimensional score breakdown (6 pillars)
+  - `said_risk_assessment` — Risk tier + recommended tx params + escrow
+  - `said_credit_score` — SACRS 300-850 FICO-compatible credit score
+  - `said_dual_score` — Provider trust vs consumer trust separation
+  - `said_trust_summary` — One-call comprehensive trust overview
+  - `said_stake_info` — Staking amount, status, slashing history
+  - `said_batch_verify` — Batch verify up to 25 wallets
+  - `said_feedback` — Agent reviews and feedback entries
+  - `said_leaderboard` — Top agents by reputation
+  - `said_agent_card` — ERC-8004 Agent Card (JSON-LD)
+  - `said_protocol_stats` — Protocol-wide statistics
+- **CLI integration** — `npx @said-protocol/client --mcp` starts MCP server
+- **Claude Code / Cursor compatible** — add to `mcp.json` config
+- **Zero external MCP SDK dependency** — minimal stdio JSON-RPC built-in
+- **10 new tests** — tool listing, schema validation, error handling, live API
+
+### Competitive Impact
+
+Closes the MCP gap vs ChainAware (240K+ agents, free MCP server) and Mnemom
+(MCP-native trust scanning). SAID's MCP server offers superior data: staking
+amounts, slashing history, SACRS credit scores, and dual-score assessments
+that no competitor provides.
+
 ## [0.18.0] — 2026-07-25
 
 ### Added — SAID Trust Oracle for ERC-8183 Agent Commerce

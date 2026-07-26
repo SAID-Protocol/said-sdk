@@ -11,6 +11,7 @@ export default defineConfig({
     'passport': 'src/passport.ts',
     'trust-oracle': 'src/trust-oracle.ts',
     'sati': 'src/sati.ts',
+    'mcp-server': 'src/mcp-server.ts',
   },
   format: ['cjs', 'esm'],
   dts: true,
