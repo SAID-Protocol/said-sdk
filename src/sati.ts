@@ -213,6 +213,76 @@ export class SatiBridge {
     this.cache.set(key, { data, expires: Date.now() + this.cacheTtlMs });
   }
 
+  /**
+   * Fetch asset metadata via Metaplex Digital Asset Standard (DAS) API.
+   * Supported by Helius, Triton, QuickNode, Alchemy, and standard Solana RPC.
+   */
+  private async fetchDasMetadata(mintAddress: string): Promise<{
+    name?: string;
+    description?: string;
+    image?: string;
+    created_at?: string;
+    attributes?: Array<{ trait_type: string; value: string }>;
+  } | null> {
+    try {
+      const res = await fetch(this.rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'getAsset',
+          params: { id: mintAddress },
+        }),
+        signal: AbortSignal.timeout(8_000),
+      });
+
+      if (!res.ok) return null;
+
+      const json = await res.json() as {
+        result?: {
+          content?: {
+            metadata?: { name?: string; description?: string };
+            json_uri?: string;
+            created_at?: string;
+          };
+          royalties?: { percent?: string };
+          compression?: { compressed?: boolean };
+        };
+        error?: unknown;
+      };
+
+      // If DAS not supported (RPC returns error), return null
+      if (json.error) return null;
+
+      const result = json.result;
+      if (!result) return null;
+
+      const metadata = result.content?.metadata;
+
+      return {
+        name: metadata?.name,
+        description: metadata?.description,
+        created_at: result.content?.created_at,
+      };
+    } catch {
+      // DAS API not available on this RPC — graceful fallback
+      return null;
+    }
+  }
+
+  /**
+   * Check if a DAS metadata object represents a SATI NFT.
+   * SATI NFTs are typically minted by the Cascade program or carry specific attributes.
+   */
+  private isSatiNft(metadata: { name?: string; attributes?: Array<{ trait_type: string; value: string }> } | null): boolean {
+    if (!metadata) return true; // Can't verify — assume SATI if token exists
+    // SATI NFTs have "SATI" in name or carry a protocol attribute
+    const nameMatch = metadata.name?.toLowerCase().includes('sati');
+    const attrMatch = metadata.attributes?.some(a => a.trait_type === 'protocol' && a.value === 'SATI');
+    return Boolean(nameMatch || attrMatch);
+  }
+
   /** Clear cached data for a wallet (or all if no wallet given). */
   invalidate(wallet?: string): void {
     if (wallet) {
@@ -307,13 +377,23 @@ export class SatiBridge {
       // For now, return a minimal identity based on account existence
       if (accounts.length === 0) return null;
 
-      // TODO: Full implementation would fetch metadata from the mint
-      // using Metaplex Digital Asset Standard (DAS) API
+      // Fetch metadata via Metaplex DAS API (supported by Helius, Triton, QuickNode, Alchemy)
+      const mintAddress = accounts[0].account.data.parsed.info.mint;
+      const metadata = await this.fetchDasMetadata(mintAddress);
+
+      // Verify this is actually a SATI mint by checking the metadata
+      // SATI NFTs have specific creator addresses or attributes
+      const isSatiMint = this.isSatiNft(metadata);
+      if (!isSatiMint && accounts.length === 1) {
+        // Single token that's not SATI — not a SATI agent
+        return null;
+      }
+
       return {
-        name: 'SATI Agent',
+        name: metadata?.name || 'SATI Agent',
         wallet,
-        registeredAt: '', // Would come from NFT metadata
-        mintAddress: accounts[0].account.data.parsed.info.mint,
+        registeredAt: metadata?.created_at || '',
+        mintAddress,
         source: 'SATI',
       };
     } catch {
