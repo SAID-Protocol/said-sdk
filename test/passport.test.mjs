@@ -17,13 +17,11 @@ import {
   isValid,
   addAttestation,
   getAttestationScore,
-
-
-} from '../passport.js';
+} from '../dist/passport.js';
 
 // ── Test Fixtures ───────────────────────────────────────────────────────────
 
-const trustedAgent: PassportInput = {
+const trustedAgent = {
   wallet: 'EK3mP45iwgDEEts2cEDfhAs2i4PrH63NMG7vHg2d6fas',
   name: 'Trusted Agent',
   description: 'A well-established agent',
@@ -33,10 +31,10 @@ const trustedAgent: PassportInput = {
   stakeSOL: 5.0,
   slashedCount: 0,
   feedbackCount: 42,
-  registeredAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(), // 90 days ago
+  registeredAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
 };
 
-const provisionalAgent: PassportInput = {
+const provisionalAgent = {
   wallet: 'ProvAgent11111111111111111111111111111111111',
   name: 'Provisional Agent',
   verified: false,
@@ -48,7 +46,7 @@ const provisionalAgent: PassportInput = {
   registeredAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
 };
 
-const untrustedAgent: PassportInput = {
+const untrustedAgent = {
   wallet: 'BadAgent111111111111111111111111111111111111',
   name: 'Bad Actor',
   verified: false,
@@ -60,7 +58,7 @@ const untrustedAgent: PassportInput = {
   registeredAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
 };
 
-const unregisteredAgent: PassportInput = {
+const unregisteredAgent = {
   wallet: 'Unknown1111111111111111111111111111111111111',
   registered: false,
   trustScore: null,
@@ -98,34 +96,34 @@ describe('calculateDimensions', () => {
 describe('calculateVerdict', () => {
   it('returns trusted for high-score verified staked agent', () => {
     const dims = calculateDimensions(trustedAgent);
-    const { verdict, riskLevel } = calculateVerdict(dims, true);
-    assert.equal(verdict, 'trusted');
-    assert.equal(riskLevel, 'low');
+    const result = calculateVerdict(dims, true);
+    assert.equal(result.verdict, 'trusted');
+    assert.equal(result.riskLevel, 'low');
   });
 
   it('returns provisional for medium-score agent', () => {
     const dims = calculateDimensions(provisionalAgent);
-    const { verdict, riskLevel } = calculateVerdict(dims, true);
-    assert.equal(verdict, 'provisional');
-    assert.equal(riskLevel, 'medium');
+    const result = calculateVerdict(dims, true);
+    assert.equal(result.verdict, 'provisional');
+    assert.equal(result.riskLevel, 'medium');
   });
 
   it('returns untrusted for slashed low-score agent', () => {
     const dims = calculateDimensions(untrustedAgent);
-    const { verdict, riskLevel } = calculateVerdict(dims, true);
-    assert.equal(verdict, 'untrusted');
-    assert.equal(riskLevel, 'critical');
+    const result = calculateVerdict(dims, true);
+    assert.equal(result.verdict, 'untrusted');
+    assert.equal(result.riskLevel, 'critical');
   });
 
   it('returns insufficient_evidence for unregistered agent', () => {
     const dims = calculateDimensions(unregisteredAgent);
-    const { verdict, riskLevel } = calculateVerdict(dims, false);
-    assert.equal(verdict, 'insufficient_evidence');
-    assert.equal(riskLevel, 'unknown');
+    const result = calculateVerdict(dims, false);
+    assert.equal(result.verdict, 'insufficient_evidence');
+    assert.equal(result.riskLevel, 'unknown');
   });
 
   it('returns untrusted for 3+ slashing events regardless of score', () => {
-    const dims: ReturnType<typeof calculateDimensions> = {
+    const dims = {
       reputation: 80,
       economicSecurity: 5,
       slashingEvents: 3,
@@ -133,12 +131,12 @@ describe('calculateVerdict', () => {
       feedbackCount: 20,
       longevityDays: 100,
     };
-    const { verdict } = calculateVerdict(dims, true);
-    assert.equal(verdict, 'untrusted');
+    const result = calculateVerdict(dims, true);
+    assert.equal(result.verdict, 'untrusted');
   });
 
   it("follows 'unknown ≠ zero' philosophy", () => {
-    const dims: ReturnType<typeof calculateDimensions> = {
+    const dims = {
       reputation: 0,
       economicSecurity: 0,
       slashingEvents: 0,
@@ -146,10 +144,9 @@ describe('calculateVerdict', () => {
       feedbackCount: 0,
       longevityDays: 0,
     };
-    const { verdict, riskLevel } = calculateVerdict(dims, true);
-    // Registered but no data → insufficient_evidence, NOT untrusted
-    assert.equal(verdict, 'insufficient_evidence');
-    assert.equal(riskLevel, 'unknown');
+    const result = calculateVerdict(dims, true);
+    assert.equal(result.verdict, 'insufficient_evidence');
+    assert.equal(result.riskLevel, 'unknown');
   });
 });
 
@@ -160,8 +157,8 @@ describe('calculateTerms', () => {
     const dims = calculateDimensions(trustedAgent);
     const terms = calculateTerms(dims, 'trusted');
     assert.ok(terms.escrowPct < 30, `escrow should be < 30, got ${terms.escrowPct}`);
-    assert.ok(terms.maxTxnUSDC! >= 800, `max txn should be >= 800, got ${terms.maxTxnUSDC}`);
-    assert.ok(terms.dailySpendUSDC! >= 4000, `daily should be >= 4000, got ${terms.dailySpendUSDC}`);
+    assert.ok(terms.maxTxnUSDC >= 800, `max txn should be >= 800, got ${terms.maxTxnUSDC}`);
+    assert.ok(terms.dailySpendUSDC >= 4000, `daily should be >= 4000, got ${terms.dailySpendUSDC}`);
   });
 
   it('gives full escrow for untrusted agents', () => {
@@ -221,7 +218,7 @@ describe('buildPassport', () => {
   it('includes attestations when enabled', () => {
     const attestation = {
       source: 'clawpump',
-      type: 'transactional' as const,
+      type: 'transactional',
       score: 90,
       volume: 15,
       updatedAt: new Date().toISOString(),
@@ -258,7 +255,7 @@ describe('toMCPMeta', () => {
     assert.equal(meta.slashed, 0);
     assert.equal(meta.risk, 'low');
     assert.ok(meta.exp);
-    assert.equal(meta.jwt, null); // no JWT by default
+    assert.equal(meta.jwt, null);
   });
 
   it('includes JWT when provided', () => {
@@ -341,9 +338,9 @@ describe('JSON serialisation', () => {
     const json = toJSON(passport);
     const parsed = fromJSON(json);
     assert.ok(parsed);
-    assert.equal(parsed!.wallet, trustedAgent.wallet);
-    assert.equal(parsed!.verdict, 'trusted');
-    assert.equal(parsed!.version, 1);
+    assert.equal(parsed.wallet, trustedAgent.wallet);
+    assert.equal(parsed.verdict, 'trusted');
+    assert.equal(parsed.version, 1);
   });
 
   it('fromJSON returns null for expired passport', () => {
@@ -362,7 +359,7 @@ describe('JSON serialisation', () => {
 
   it('fromJSON returns null for invalid JSON', () => {
     assert.equal(fromJSON('not json'), null);
-    assert.equal(fromJSON('{}'), null); // missing required fields
+    assert.equal(fromJSON('{}'), null);
   });
 });
 
