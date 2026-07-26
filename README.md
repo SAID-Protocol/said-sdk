@@ -2,7 +2,7 @@
 
 Official SDK for [SAID Protocol](https://saidprotocol.com) — agent identity, trust scoring, and cross-chain messaging on Solana.
 
-> **v0.15.0** — x402 Payment Trust Facilitator + ERC-8183 ACP + Agent Card Builder + Policy Presets + Dual-Score Model + SACRS Credit Score + Trust Middleware + Signed Receipts. 317 tests passing.
+> **v0.20.0** — Enforcement Oracle for x402 + Trust Oracle for ERC-8183 + SATI Compatibility + Reputation Passport + Trust Report + x402 Payment Trust Facilitator + ERC-8183 ACP + Agent Card Builder + Policy Presets + Dual-Score Model + SACRS Credit Score + Trust Middleware + Signed Receipts.
 
 ## What is SAID?
 
@@ -665,7 +665,87 @@ SAID uses a multi-dimensional scoring system (0-100):
 
 **Payments (x402):** Solana, Base, Polygon, Avalanche, Sei
 
-## ERC-8183 Agent Commerce Protocol (v0.14.0) ⭐ NEW
+## Enforcement Oracle for x402 (v0.20.0) 🆕
+
+The #1 strategic product from SAID's 90-day research synthesis. Sits in x402 payment flows and enforces staking/slashing conditions BEFORE settlement. Every x402 marketplace needs trust enforcement — SAID is the only protocol with on-chain economic enforcement for agents.
+
+### Quick Start
+
+```typescript
+import { SAIDClient } from '@said-protocol/client';
+import { EnforcementOracle } from '@said-protocol/client/enforcement-oracle';
+
+const said = new SAIDClient();
+const oracle = new EnforcementOracle(said);
+
+// Check before allowing payment
+const verdict = await oracle.enforce('AGENT_WALLET');
+if (verdict.action === 'block') {
+  throw new Error(`Payment blocked: ${verdict.summary}`);
+} else if (verdict.action === 'require_escrow') {
+  console.log(`Escrow required: ${verdict.escrowPct}%`);
+}
+// Proceed with payment...
+```
+
+### Two-Sided Payment Check
+
+```typescript
+const result = await oracle.checkPayment(payerWallet, payeeWallet);
+if (!result.proceed) {
+  throw new Error(result.recommendation);
+}
+if (result.escrowRequired) {
+  await createEscrow(result.escrowPct);
+}
+```
+
+### Wrap fetch for automatic enforcement
+
+```typescript
+const enforcedFetch = oracle.wrapFetch(fetch);
+// 402 responses are now automatically trust-checked
+const res = await enforcedFetch('https://api.example.com/data');
+```
+
+### Factory Presets
+
+```typescript
+import { createStrictOracle, createPermissiveOracle, createX402Oracle } from '@said-protocol/client/enforcement-oracle';
+
+const strict = createStrictOracle(said);      // High-value/DeFi
+const balanced = createX402Oracle(said);       // Default x402 flows
+const permissive = createPermissiveOracle(said); // Social/low-value
+```
+
+### Deploy as API endpoint
+
+```typescript
+// Hono/Express
+app.get('/enforce/:wallet', async (c) => {
+  const verdict = await oracle.enforce(c.req.param('wallet'));
+  return oracle.toJsonResponse(verdict);
+});
+```
+
+Returns trust metadata in headers:
+- `X-SAID-Action`: allow | require_escrow | block
+- `X-SAID-Score`: trust score (0-100)
+- `X-SAID-Stake`: SOL staked
+- `X-SAID-Slashes`: slash count
+- `X-SAID-Escrow-Pct`: recommended escrow %
+
+### Enforcement Actions
+
+| Action | When |
+|--------|------|
+| `allow` | Verified, score ≥ 40, staked ≥ 0.5 SOL, ≤ 3 slashes |
+| `require_escrow` | Unverified, low stake, or minor risk factors |
+| `block` | Score < 20, 3+ slashes, or strict mode + unregistered |
+
+Revenue model: $0.01/check via x402 pay-per-query.
+
+## ERC-8183 Agent Commerce Protocol (v0.14.0)
 
 First SDK to combine ERC-8183 ACP (Virtuals Protocol's agent commerce standard — $4.5M cumulative fees, 18K+ agents) with on-chain enforcement. Every ERC-8183 marketplace needs trust enforcement — SAID is the default.
 
@@ -918,6 +998,111 @@ const result = await facilitator.checkPayment(res, {
 });
 
 // result.checked === 'both'
+```
+
+## Reputation Passport (v0.17.0) ⭐ NEW
+
+The **SAID Reputation Passport** is a portable cross-protocol trust credential that combines identity, trust score, enforcement data, and economic backing into a single credential. It works across MCP, A2A, x402, and AP2 protocols.
+
+Six independent research sources confirmed that no protocol supplies inter-agent reputation. SAID's unique advantage: staking/slashing converts reputation from advisory signal into financial guarantee.
+
+### Generate a Passport
+
+```typescript
+import { SAIDClient } from '@said-protocol/client';
+import { toMCPMeta, toA2ACard, toX402Headers, toAP2Mandate } from '@said-protocol/client/passport';
+
+const client = new SAIDClient();
+
+// One call generates a portable passport
+const passport = await client.getReputationPassport('WALLET_ADDRESS');
+
+console.log(passport.verdict);        // 'trusted' | 'provisional' | 'insufficient_evidence' | 'untrusted'
+console.log(passport.riskLevel);      // 'low' | 'medium' | 'high' | 'critical' | 'unknown'
+console.log(passport.dimensions);     // Trust dimensions: reputation, economicSecurity, slashingEvents, etc.
+console.log(passport.terms);          // Dynamic terms: escrowPct, maxTxUSDC, dailyCapUSDC
+```
+
+### Serialize for Different Protocols
+
+```typescript
+// For MCP — embed in _meta field (stateless, no API calls needed by verifier)
+const meta = toMCPMeta(passport);
+// { 'said:wallet': '...', 'said:score': 85, 'said:tier': 'gold', 'said:staked': 5.0, ... }
+
+// For A2A — extend Agent Card
+const extension = toA2ACard(passport);
+// { 'said:trust': { verdict: 'trusted', score: 85, ... } }
+
+// For x402 — HTTP headers
+const headers = toX402Headers(passport);
+// { 'X-SAID-Verdict': 'trusted', 'X-SAID-Score': '85', ... }
+
+// For AP2 — mandate extension
+const mandate = toAP2Mandate(passport);
+// { said_trust_verdict: 'trusted', said_max_txn_usdc: 500, ... }
+```
+
+### Add Third-Party Attestations
+
+```typescript
+import { addAttestation } from '@said-protocol/client/passport';
+
+// Attestations from partner platforms increase confidence
+const enriched = addAttestation(passport, {
+  source: 'clawpump',
+  type: 'transactional',
+  score: 92,
+  volume: 150,
+  updatedAt: new Date().toISOString(),
+});
+```
+
+### Passport Verdicts
+
+| Verdict | Risk Level | Criteria | Use Case |
+|---------|-----------|----------|----------|
+| `trusted` | low | Verified + score ≥ 70 + staked + no slashes | Allow transactions autonomously |
+| `provisional` | medium-high | Registered but doesn't meet all trust criteria | Allow with escrow / review |
+| `insufficient_evidence` | unknown | Not registered or minimal data | Default-deny or manual review |
+| `untrusted` | critical | Slashed or very low score | Block all transactions |
+
+## Trust Report (v0.17.0)
+
+Generate a human-readable markdown trust report combining all SAID data:
+
+```typescript
+const report = await client.createTrustReport('WALLET_ADDRESS');
+
+console.log(report.markdown);       // Formatted markdown report
+console.log(report.recommendation); // 'allow' | 'review' | 'deny'
+console.log(report.summary);        // Full TrustSummary object
+console.log(report.passport);       // ReputationPassport
+```
+
+The report includes: identity status, trust score breakdown, enforcement data (stake + slashes), risk tier with escrow recommendations, SACRS credit score with probability of default, dual-score (provider + consumer trust), and passport verdict.
+
+## Batch Verification (v0.17.0)
+
+Verify multiple agents in a single call with configurable criteria:
+
+```typescript
+const results = await client.batchVerify(
+  ['WALLET_A', 'WALLET_B', 'WALLET_C'],
+  {
+    minScore: 50,           // Require score ≥ 50
+    requireStaked: true,    // Must have SOL staked
+    maxSlashes: 0,          // No slashing history
+  }
+);
+
+console.log(`${results.passedCount}/${results.total} agents verified`);
+
+// Get passing wallets
+const trusted = results.passed.map(r => r.wallet);
+
+// Get failure reasons
+results.failed.forEach(f => console.log(`${f.wallet}: ${f.reason}`));
 ```
 
 ## License

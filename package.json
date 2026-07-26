@@ -1,7 +1,7 @@
 {
   "name": "@said-protocol/client",
-  "version": "0.15.0",
-  "description": "SAID Protocol SDK — agent identity, trust scoring, enforcement, and cross-chain messaging on Solana",
+  "version": "0.20.0",
+  "description": "SAID Protocol SDK \u2014 agent identity, trust scoring, enforcement, and cross-chain messaging on Solana",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -40,6 +40,30 @@
       "require": "./dist/x402.cjs",
       "default": "./dist/x402.js"
     },
+    "./passport": {
+      "types": "./dist/passport.d.ts",
+      "import": "./dist/passport.js",
+      "require": "./dist/passport.cjs",
+      "default": "./dist/passport.js"
+    },
+    "./trust-oracle": {
+      "types": "./dist/trust-oracle.d.ts",
+      "import": "./dist/trust-oracle.js",
+      "require": "./dist/trust-oracle.cjs",
+      "default": "./dist/trust-oracle.js"
+    },
+    "./sati": {
+      "types": "./dist/sati.d.ts",
+      "import": "./dist/sati.js",
+      "require": "./dist/sati.cjs",
+      "default": "./dist/sati.js"
+    },
+    "./enforcement-oracle": {
+      "types": "./dist/enforcement-oracle.d.ts",
+      "import": "./dist/enforcement-oracle.js",
+      "require": "./dist/enforcement-oracle.cjs",
+      "default": "./dist/enforcement-oracle.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -52,7 +76,7 @@
     "build": "tsup",
     "test": "node test/integration.mjs",
     "test:cjs": "node test/cjs-import.test.cjs",
-    "test:all": "npm run build && npm run test && npm run test:cjs && node test/acp.test.mjs && node test/x402.test.mjs",
+    "test:all": "npm run build && npm run test && npm run test:cjs && node test/acp.test.mjs && node test/x402.test.mjs && npx tsx --test src/test/passport.test.ts && npx tsx --test src/test/trust-oracle.test.ts && npx tsx --test src/test/sati.test.ts && npx tsx --test src/test/enforcement-oracle.test.ts",
     "prepublishOnly": "npm run build",
     "typecheck": "tsc --noEmit"
   },
@@ -67,6 +91,8 @@
     "erc-8183",
     "acp",
     "x402",
+    "sati",
+    "sati-compatibility",
     "agent-commerce",
     "trust-score",
     "agent-identity",
