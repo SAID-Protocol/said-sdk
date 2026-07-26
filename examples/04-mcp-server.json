@@ -1,0 +1,40 @@
+/**
+ * Example 04 — MCP Server Setup
+ *
+ * Shows how to add SAID Protocol's MCP server to your AI agent setup.
+ * Works with Claude Code, Cursor, Gemini, and any MCP-compatible client.
+ *
+ * Copy the JSON below into your MCP client config file:
+ *
+ * Claude Code:  ~/Library/Application Support/Claude/claude_desktop_config.json
+ * Cursor:      ~/.cursor/mcp.json
+ *
+ * No installation needed — npx handles everything.
+ */
+
+const mcpConfig = {
+  mcpServers: {
+    said: {
+      command: 'npx',
+      args: ['-y', '@said-protocol/client', '--mcp'],
+    },
+  },
+};
+
+// Available MCP tools (12 total):
+//
+//   said_verify_agent     — Full agent verification + identity + trust score
+//   said_trust_score      — Multi-dimensional score breakdown (6 pillars)
+//   said_risk_assessment  — Risk tier + recommended tx params + escrow
+//   said_credit_score     — SACRS 300-850 FICO-compatible credit score
+//   said_dual_score       — Provider trust vs consumer trust
+//   said_trust_summary    — One-call comprehensive overview
+//   said_stake_info       — Staking amount, status, slashing history
+//   said_batch_verify     — Batch verify up to 25 wallets
+//   said_feedback         — Agent reviews and feedback
+//   said_leaderboard      — Top agents by reputation
+//   said_agent_card       — ERC-8004 Agent Card (JSON-LD)
+//   said_protocol_stats   — Protocol-wide statistics
+
+console.log('Add this to your MCP client config:\n');
+console.log(JSON.stringify(mcpConfig, null, 2));
