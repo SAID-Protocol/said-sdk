@@ -33,6 +33,7 @@ jobs:
           node test/middleware.test.mjs
           node test/x402.test.mjs
           node test/cjs-import.test.cjs
+          node test/passport.test.mjs
 
       - name: Publish
         run: npm publish --provenance --access public

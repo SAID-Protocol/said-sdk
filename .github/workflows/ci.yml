@@ -42,6 +42,9 @@ jobs:
       - name: CJS import tests
         run: node test/cjs-import.test.cjs
 
+      - name: Passport tests
+        run: node test/passport.test.mjs
+
   build-check:
     runs-on: ubuntu-latest
     steps:
