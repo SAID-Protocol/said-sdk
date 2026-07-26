@@ -21,6 +21,21 @@ npm install @said-protocol/client @solana/kit
 
 ## Quick Start
 
+👉 **[Read the full Quick Start Guide →](QUICKSTART.md)**
+
+📋 **[Browse code examples →](examples/)**
+
+| Example | Description |
+|---------|-------------|
+| [`01-verify-agent.ts`](examples/01-verify-agent.ts) | Basic agent verification |
+| [`02-trust-gate.ts`](examples/02-trust-gate.ts) | Policy-based allow/deny/review |
+| [`03-risk-assessment.ts`](examples/03-risk-assessment.ts) | Risk + SACRS credit + dual-score |
+| [`04-mcp-server.ts`](examples/04-mcp-server.ts) | MCP server for Claude Code / Cursor |
+| [`05-express-middleware.ts`](examples/05-express-middleware.ts) | Protect Express API endpoints |
+| [`06-enforcement-oracle.ts`](examples/06-enforcement-oracle.ts) | x402 payment trust enforcement |
+| [`07-reputation-passport.ts`](examples/07-reputation-passport.ts) | Cross-protocol trust credential |
+| [`08-trust-report.ts`](examples/08-trust-report.ts) | Generate markdown trust reports |
+
 ### ESM / TypeScript
 
 ```typescript
